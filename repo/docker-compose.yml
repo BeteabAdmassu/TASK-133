@@ -1,11 +1,11 @@
 name: task-133
 
 services:
-  backend:
+  app:
     build:
-      context: ./backend
+      context: ./app
       dockerfile: Dockerfile
-    container_name: task-133-backend
+    container_name: task-133-app
     ports:
       - "8080:8080"
     environment:

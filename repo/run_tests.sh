@@ -12,13 +12,13 @@ INTERVAL=5
 echo "=== Eagle Point Console — Test Runner ==="
 echo ""
 
-# ---- Wait for backend health ----
-echo "Waiting for backend to be healthy (max ${MAX_WAIT}s)..."
+# ---- Wait for app health ----
+echo "Waiting for app to be healthy (max ${MAX_WAIT}s)..."
 elapsed=0
 until curl -sf "${BACKEND_URL}/api/health" > /dev/null 2>&1; do
     if [ "$elapsed" -ge "$MAX_WAIT" ]; then
-        echo "ERROR: Backend not healthy after ${MAX_WAIT}s"
-        docker compose logs backend | tail -50
+        echo "ERROR: App not healthy after ${MAX_WAIT}s"
+        docker compose logs app | tail -50
         exit 1
     fi
     sleep "$INTERVAL"
@@ -26,7 +26,7 @@ until curl -sf "${BACKEND_URL}/api/health" > /dev/null 2>&1; do
     echo "  Waiting... ($elapsed/${MAX_WAIT}s)"
 done
 
-echo "Backend is healthy!"
+echo "App is healthy!"
 echo ""
 
 # ---- Verify health endpoint returns expected fields ----
@@ -41,9 +41,9 @@ echo ""
 
 # ---- Run unit + integration tests inside a test-profile container ----
 echo "Building test image (target=tests)..."
-docker build --target tests -t task-133-backend-tests ./backend >/dev/null
+docker build --target tests -t task-133-app-tests ./app >/dev/null
 echo "Running Maven tests inside test container..."
-if ! docker run --rm task-133-backend-tests; then
+if ! docker run --rm task-133-app-tests; then
     echo "FAIL: Maven tests failed"
     exit 1
 fi

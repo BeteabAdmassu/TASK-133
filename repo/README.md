@@ -21,7 +21,7 @@ A fully offline Windows 11 desktop application for managing hospital operations:
 
 ```text
 repo/
-├── backend/                    # Java 21 Maven project
+├── app/                        # Java 21 Maven project (JavaFX UI + headless Javalin API)
 │   ├── src/
 │   │   ├── main/java/com/eaglepoint/console/
 │   │   │   ├── App.java                    # JavaFX Application entry point
@@ -73,7 +73,7 @@ docker compose up --build -d
 curl http://localhost:8080/api/health
 
 # View logs
-docker compose logs -f backend
+docker compose logs -f app
 ```
 
 The API is available at `http://localhost:8080`.
@@ -151,7 +151,7 @@ Key endpoint groups:
 ## Testing
 
 Tests run inside Docker via Maven Surefire. The `run_tests.sh` orchestrator:
-1. Waits for the backend to be healthy
+1. Waits for the app to be healthy
 2. Runs API smoke tests via `curl`
 3. Executes the Maven test suite inside the container
 
