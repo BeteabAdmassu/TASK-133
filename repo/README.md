@@ -254,7 +254,7 @@ Key endpoint groups:
 | `/api/service-areas/*` | Service-area management | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER`; delete: `SYSTEM_ADMIN` |
 | `/api/pickup-points/*` | Pickup points + pause/resume/match | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER` |
 | `/api/leader-assignments/*` | Leader assignment workflow | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER` |
-| `/api/cycles/*` | Evaluation cycle lifecycle | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER`; delete: `SYSTEM_ADMIN` |
+| `/api/cycles/*` | Evaluation cycle lifecycle (DRAFT → ACTIVE → CLOSED via `/activate` and `/close`) | read: any auth; write/activate/close: `SYSTEM_ADMIN`, `OPS_MANAGER`; delete: `SYSTEM_ADMIN`, `OPS_MANAGER` |
 | `/api/scorecards/*` | Scorecard CRUD, submit, recuse | `SYSTEM_ADMIN`, `OPS_MANAGER`, `REVIEWER` |
 | `/api/reviews/*` | Review approve/reject/flag-conflict/assign-second | `REVIEWER`, `SYSTEM_ADMIN`, `OPS_MANAGER` |
 | `/api/appeals/*` | Appeal file/resolve/reject | file: evaluatee only; resolve/reject: `SYSTEM_ADMIN`, `OPS_MANAGER` |
@@ -266,6 +266,30 @@ Key endpoint groups:
 | `/api/jobs/*` | Scheduled job list/pause/resume | `SYSTEM_ADMIN` |
 | `/api/audit-trail` | Audit trail | `SYSTEM_ADMIN`, `AUDITOR` |
 | `/api/logs` | System logs | `SYSTEM_ADMIN`, `AUDITOR` |
+
+### Query shaping (sort + field selection)
+
+List endpoints under `/api/communities`, `/api/users`, `/api/beds`, and
+`/api/pickup-points` accept two optional shaping query params on top of the
+standard pagination:
+
+- `sort=field` — ascending by that field; `sort=-field` — descending;
+  `sort=a,-b` — multi-key tiebreaker.
+- `fields=a,b,c` — restrict each row to the listed keys (the `id` column is
+  always preserved so clients can follow-up).
+
+Shaping is applied in-memory on the current paginated page (default 50, max
+500 rows) so it never loosens the documented pagination bounds.
+
+### Exports
+
+`POST /api/exports` starts an async job that queries the requested
+`entityType`, writes the rows to the destination folder as CSV / Excel / PDF,
+and emits a SHA-256 sidecar next to the output file.  Supported entity types:
+`COMMUNITIES`, `SERVICE_AREAS`, `PICKUP_POINTS`, `BEDS`, `BED_BUILDINGS`,
+`ROOMS`, `USERS`, `KPIS`, `KPI_SCORES`, `GEOZONES`.  Sensitive fields
+(encrypted staff ids, resident ids, pickup addresses) are **always masked** to
+`[MASKED]` in export output — the masking is not caller-controlled.
 
 ---
 

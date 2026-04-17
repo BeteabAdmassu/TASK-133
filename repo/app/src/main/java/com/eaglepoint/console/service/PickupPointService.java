@@ -6,29 +6,43 @@ import com.eaglepoint.console.exception.NotFoundException;
 import com.eaglepoint.console.exception.ValidationException;
 import com.eaglepoint.console.model.PagedResult;
 import com.eaglepoint.console.model.PickupPoint;
+import com.eaglepoint.console.model.Geozone;
 import com.eaglepoint.console.repository.CommunityRepository;
+import com.eaglepoint.console.repository.GeozoneRepository;
 import com.eaglepoint.console.repository.PickupPointRepository;
 import com.eaglepoint.console.security.EncryptionUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PickupPointService {
     private static final Logger log = LoggerFactory.getLogger(PickupPointService.class);
     private static final Pattern ZIP_PATTERN = Pattern.compile("^\\d{5}(-\\d{4})?$");
+    private static final Pattern LEADING_NUMBER = Pattern.compile("^\\s*(\\d+)\\b");
 
     private final PickupPointRepository ppRepo;
     private final CommunityRepository communityRepo;
+    private final GeozoneRepository geozoneRepo;
     private final EncryptionUtil encryptionUtil;
     private final AuditService auditService;
 
+    /** Legacy ctor — no geozone lookup; match() falls back to direct ZIP only. */
     public PickupPointService(PickupPointRepository ppRepo, CommunityRepository communityRepo,
+                               SecurityConfig securityConfig, AuditService auditService) {
+        this(ppRepo, communityRepo, null, securityConfig, auditService);
+    }
+
+    public PickupPointService(PickupPointRepository ppRepo, CommunityRepository communityRepo,
+                               GeozoneRepository geozoneRepo,
                                SecurityConfig securityConfig, AuditService auditService) {
         this.ppRepo = ppRepo;
         this.communityRepo = communityRepo;
+        this.geozoneRepo = geozoneRepo;
         this.encryptionUtil = new EncryptionUtil(securityConfig.getEncryptionKey());
         this.auditService = auditService;
     }
@@ -131,11 +145,91 @@ public class PickupPointService {
         return ppRepo.findById(id).orElseThrow();
     }
 
+    /**
+     * Resolve a pickup point for a resident address using the community + ZIP +
+     * street-range rules.
+     *
+     * <ol>
+     *   <li>Verify the community exists.</li>
+     *   <li>Collect candidates from the community's <strong>active</strong>
+     *       pickup points whose {@code zipCode} equals the request ZIP
+     *       <em>or</em> whose attached geozone covers the request ZIP.</li>
+     *   <li>If the caller supplied a street address whose leading house
+     *       number falls inside a candidate's {@code streetRangeStart}..
+     *       {@code streetRangeEnd} range, return that candidate.</li>
+     *   <li>Otherwise return the first candidate (one-active-per-community
+     *       keeps this list small).</li>
+     * </ol>
+     *
+     * Throws {@link NotFoundException} if no candidate satisfies the rules.
+     */
     public PickupPoint matchPickupPoint(String zipCode, String streetAddress, long communityId) {
-        communityRepo.findById(communityId).orElseThrow(() -> new NotFoundException("Community", communityId));
-        List<PickupPoint> matches = ppRepo.findByZipCode(zipCode, communityId);
-        if (matches.isEmpty()) throw new NotFoundException("No active pickup point found for this community and ZIP code");
-        return matches.get(0);
+        communityRepo.findById(communityId)
+            .orElseThrow(() -> new NotFoundException("Community", communityId));
+
+        List<PickupPoint> candidates = collectActiveCandidates(zipCode, communityId);
+        if (candidates.isEmpty()) {
+            throw new NotFoundException(
+                "No active pickup point matches this community/ZIP combination");
+        }
+
+        Integer streetNumber = parseLeadingHouseNumber(streetAddress);
+        if (streetNumber != null) {
+            for (PickupPoint pp : candidates) {
+                if (isInStreetRange(streetNumber, pp.getStreetRangeStart(), pp.getStreetRangeEnd())) {
+                    return pp;
+                }
+            }
+        }
+        return candidates.get(0);
+    }
+
+    private List<PickupPoint> collectActiveCandidates(String zipCode, long communityId) {
+        List<PickupPoint> out = new ArrayList<>();
+        // 1. Direct ZIP match on the pickup point row itself.
+        for (PickupPoint pp : ppRepo.findByZipCode(zipCode, communityId)) {
+            if ("ACTIVE".equals(pp.getStatus())) out.add(pp);
+        }
+        // 2. Geozone-mediated match — any geozone covering this ZIP pulls in
+        //    pickup points in this community whose geozoneId matches.
+        if (geozoneRepo != null) {
+            List<Geozone> zones = geozoneRepo.findByZipCode(zipCode);
+            if (!zones.isEmpty()) {
+                List<PickupPoint> inCommunity =
+                    ppRepo.findByCommunity(communityId, 1, 500).getData();
+                for (PickupPoint pp : inCommunity) {
+                    if (!"ACTIVE".equals(pp.getStatus())) continue;
+                    if (pp.getGeozoneId() == null) continue;
+                    for (Geozone gz : zones) {
+                        if (gz.getId() == pp.getGeozoneId()) {
+                            if (out.stream().noneMatch(x -> x.getId() == pp.getId())) {
+                                out.add(pp);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private Integer parseLeadingHouseNumber(String streetAddress) {
+        if (streetAddress == null) return null;
+        Matcher m = LEADING_NUMBER.matcher(streetAddress);
+        if (!m.find()) return null;
+        try { return Integer.parseInt(m.group(1)); } catch (NumberFormatException e) { return null; }
+    }
+
+    private boolean isInStreetRange(int number, String rangeStart, String rangeEnd) {
+        try {
+            if (rangeStart == null || rangeEnd == null) return false;
+            int lo = Integer.parseInt(rangeStart.trim());
+            int hi = Integer.parseInt(rangeEnd.trim());
+            return number >= Math.min(lo, hi) && number <= Math.max(lo, hi);
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     public void resumeExpiredPauses() {

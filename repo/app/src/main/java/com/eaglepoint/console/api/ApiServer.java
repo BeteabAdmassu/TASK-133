@@ -55,7 +55,9 @@ public class ApiServer {
         var communityService = new CommunityService(communityRepo, auditService);
         var geozoneService = new GeozoneService(geozoneRepo);
         var serviceAreaService = new ServiceAreaService(serviceAreaRepo, communityRepo, auditService);
-        var pickupPointService = new PickupPointService(pickupPointRepo, communityRepo, SecurityConfig.getInstance(), auditService);
+        var pickupPointService = new PickupPointService(
+            pickupPointRepo, communityRepo, geozoneRepo,
+            SecurityConfig.getInstance(), auditService);
         var leaderService = new LeaderAssignmentService(leaderRepo, userRepo, serviceAreaRepo, auditService);
         var evalService = new EvaluationService(evalRepo, auditService);
         var reviewService = new ReviewService(evalRepo, auditService);
@@ -63,8 +65,19 @@ public class ApiServer {
         var bedService = new BedService(bedRepo, SecurityConfig.getInstance(), auditService);
         var routeImportService = new RouteImportService(routeImportRepo, notificationService, auditService);
         var kpiService = new KpiService(kpiRepo, auditService);
-        var exportService = new ExportService(exportJobRepo);
+        var exportService = new ExportService(
+            exportJobRepo,
+            communityRepo, serviceAreaRepo, pickupPointRepo,
+            bedRepo, bedBuildingRepo, bedRoomRepo,
+            userRepo, kpiRepo, geozoneRepo);
         var consistencyService = new ConsistencyService(ds);
+
+        // Re-encrypt any plaintext markers left in the V2 seed so no row in
+        // users.staff_id_encrypted is stored as plaintext at runtime.
+        new com.eaglepoint.console.service.SeedEncryptionService(
+            ds,
+            new com.eaglepoint.console.security.EncryptionUtil(SecurityConfig.getInstance().getEncryptionKey())
+        ).reencryptPlaintextStaffIds();
 
         // Middleware instances
         var rateLimiter = new RateLimiter();

@@ -73,13 +73,19 @@ public class RouteImportService {
             } else {
                 checkpoints = parseCsv(importId, fileContent);
             }
+            // Second pass: compute deviation_miles and is_deviation_alert by
+            // comparing each checkpoint's masked coordinates against the previous
+            // checkpoint in sequence.  Drift above DEVIATION_ALERT_MILES (0.5 mi)
+            // flags the row and raises a WARN notification in the aggregate count.
+            annotateDeviations(checkpoints);
+
             importRepo.updateStatus(importId, "PROCESSING", null, null);
             int alertCount = 0;
             for (RouteCheckpoint cp : checkpoints) {
                 importRepo.insertCheckpoint(cp);
                 if (cp.isDeviationAlert() || cp.isMissedAlert()) alertCount++;
             }
-            importRepo.updateStatus(importId, "COMPLETED", checkpoints.size(), 0);
+            importRepo.updateStatus(importId, "COMPLETED", checkpoints.size(), alertCount);
             if (alertCount > 0) {
                 notificationService.addAlert("WARN",
                     "Route import " + importId + " completed with " + alertCount + " alerts",
@@ -221,6 +227,38 @@ public class RouteImportService {
         int idx = findCol(header, name);
         if (idx < 0 || idx >= row.length) return null;
         return row[idx].trim();
+    }
+
+    /**
+     * Fill in {@code deviationMiles} and {@code isDeviationAlert} on each
+     * checkpoint in the sequence.  The first checkpoint has no predecessor,
+     * so its deviation is {@code 0.0}.  Any subsequent checkpoint more than
+     * {@link #DEVIATION_ALERT_MILES} from its predecessor is flagged and
+     * its status is promoted to {@code DEVIATED} (unless already {@code MISSED}).
+     */
+    private void annotateDeviations(List<RouteCheckpoint> checkpoints) {
+        RouteCheckpoint prev = null;
+        for (RouteCheckpoint cp : checkpoints) {
+            Double lat = cp.getLatMasked();
+            Double lon = cp.getLonMasked();
+            if (prev == null || lat == null || lon == null
+                    || prev.getLatMasked() == null || prev.getLonMasked() == null) {
+                cp.setDeviationMiles(0.0);
+                cp.setDeviationAlert(false);
+            } else {
+                double miles = computeDeviationMiles(
+                    prev.getLatMasked(), prev.getLonMasked(),
+                    lat, lon);
+                cp.setDeviationMiles(miles);
+                if (miles > DEVIATION_ALERT_MILES) {
+                    cp.setDeviationAlert(true);
+                    if (!"MISSED".equals(cp.getStatus())) {
+                        cp.setStatus("DEVIATED");
+                    }
+                }
+            }
+            prev = cp;
+        }
     }
 
     private double computeDeviationMiles(double lat1, double lon1, double lat2, double lon2) {

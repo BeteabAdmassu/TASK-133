@@ -1,5 +1,7 @@
 package com.eaglepoint.console.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class User {
     private long id;
     private String username;
@@ -16,12 +18,16 @@ public class User {
     public void setId(long id) { this.id = id; }
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
+    /** Password hash is an internal credential; never exposed in API responses. */
+    @JsonIgnore
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getDisplayName() { return displayName; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+    /** Encrypted (AES-GCM) staff id — never exposed in API responses. */
+    @JsonIgnore
     public String getStaffIdEncrypted() { return staffIdEncrypted; }
     public void setStaffIdEncrypted(String staffIdEncrypted) { this.staffIdEncrypted = staffIdEncrypted; }
     public boolean isActive() { return isActive; }

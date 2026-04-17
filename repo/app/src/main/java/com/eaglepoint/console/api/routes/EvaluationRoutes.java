@@ -58,6 +58,20 @@ public class EvaluationRoutes {
             ctx.status(204);
         });
 
+        // Lifecycle transitions are explicit endpoints — callers must use these
+        // instead of PUT /api/cycles/{id} to move DRAFT -> ACTIVE -> CLOSED.
+        app.post("/api/cycles/{id}/activate", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("cycle", evalService.activateCycle(id)));
+        });
+
+        app.post("/api/cycles/{id}/close", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("cycle", evalService.closeCycle(id)));
+        });
+
         // --- Scorecard Templates ---
         app.get("/api/cycles/{cycleId}/templates", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);

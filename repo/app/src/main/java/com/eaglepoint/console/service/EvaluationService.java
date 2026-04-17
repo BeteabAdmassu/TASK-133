@@ -188,6 +188,11 @@ public class EvaluationService {
     public Scorecard saveResponses(long scorecardId, long actingUserId, List<ResponseInput> responses) {
         Scorecard s = evalRepo.findScorecardById(scorecardId)
             .orElseThrow(() -> new NotFoundException("Scorecard", scorecardId));
+        // Object-level auth: only the assigned evaluator may edit responses.
+        if (s.getEvaluatorId() != actingUserId) {
+            throw new com.eaglepoint.console.exception.ForbiddenException(
+                "Only the assigned evaluator can save responses for this scorecard");
+        }
         if (!"PENDING".equals(s.getStatus()) && !"IN_PROGRESS".equals(s.getStatus())) {
             throw new ConflictException("Cannot save responses for a scorecard in status: " + s.getStatus());
         }

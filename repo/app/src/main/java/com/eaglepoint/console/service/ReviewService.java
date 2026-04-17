@@ -44,6 +44,7 @@ public class ReviewService {
         if (!"PENDING".equals(r.getStatus()) && !"IN_REVIEW".equals(r.getStatus())) {
             throw new ConflictException("Review cannot be approved from status: " + r.getStatus());
         }
+        assertCanActOnReview(r, actingUserId, "approve");
         r.setStatus("APPROVED");
         r.setReviewedAt(Instant.now().toString());
         r.setComments(comments);
@@ -59,6 +60,7 @@ public class ReviewService {
         if (!"PENDING".equals(r.getStatus()) && !"IN_REVIEW".equals(r.getStatus())) {
             throw new ConflictException("Review cannot be rejected from status: " + r.getStatus());
         }
+        assertCanActOnReview(r, actingUserId, "reject");
         if (comments == null || comments.isBlank()) {
             throw new ValidationException("comments", "Comments are required when rejecting a review");
         }
@@ -68,6 +70,41 @@ public class ReviewService {
         evalRepo.updateReview(r);
         auditService.record("Review", reviewId, "REJECT", actingUserId, null, null, null, comments);
         return evalRepo.findReviewById(reviewId).orElseThrow();
+    }
+
+    /**
+     * Object-level authorisation for review approve/reject actions.
+     *
+     * <p>Rules:
+     * <ul>
+     *   <li>When a conflict has been flagged on the review, only the
+     *       <em>second</em> reviewer may approve/reject — the original
+     *       reviewer has recused themselves and must not be able to
+     *       rubber-stamp the scorecard.</li>
+     *   <li>Otherwise, the action is allowed for either the assigned
+     *       reviewer or (if one has been assigned) the second reviewer.</li>
+     * </ul>
+     */
+    private void assertCanActOnReview(Review r, long actingUserId, String action) {
+        boolean isPrimary = r.getReviewerId() == actingUserId;
+        boolean isSecond  = r.getSecondReviewerId() != null && r.getSecondReviewerId() == actingUserId;
+
+        if (r.isConflictFlagged()) {
+            if (r.getSecondReviewerId() == null) {
+                throw new ConflictException(
+                    "A second reviewer must be assigned before this review can be " + action + "d");
+            }
+            if (!isSecond) {
+                throw new ForbiddenException(
+                    "Only the assigned second reviewer may " + action + " this re-review");
+            }
+            return;
+        }
+
+        if (!isPrimary && !isSecond) {
+            throw new ForbiddenException(
+                "Only the assigned reviewer can " + action + " this review");
+        }
     }
 
     public Review flagConflict(long reviewId, long actingUserId, String reason) {

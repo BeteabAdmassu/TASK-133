@@ -281,6 +281,88 @@ class PickupPointApiTest extends BaseIntegrationTest {
             .statusCode(401);
     }
 
+    @Test
+    void matchPickupPointResolvesViaGeozoneZip() throws Exception {
+        // Create a geozone that covers ZIP 77777, a community, and a pickup
+        // point inside that community that references the geozone but with a
+        // different local ZIP (88888).  Matching by ZIP 77777 should succeed
+        // via the geozone lookup.
+        int geozoneId = withAdmin()
+            .body(Map.of(
+                "name", unique("Zone"),
+                "zipCodes", java.util.List.of("77777"),
+                "streetRangesJson", "{}"
+            ))
+        .when().post("/api/geozones").then().statusCode(201)
+            .extract().path("geozone.id");
+
+        int freshCommunity = withAdmin()
+            .body(Map.of("name", unique("GZ Community")))
+        .when().post("/api/communities").then().statusCode(201)
+            .extract().path("community.id");
+
+        int ppId = withAdmin()
+            .body(Map.of(
+                "communityId", freshCommunity,
+                "address", "200 Main",
+                "zipCode", "88888",           // direct ZIP does NOT match the request
+                "streetRangeStart", "100",
+                "streetRangeEnd", "299",
+                "hoursJson", "{}",
+                "capacity", 10,
+                "geozoneId", geozoneId        // but this geozone covers 77777
+            ))
+        .when().post("/api/pickup-points").then().statusCode(201)
+            .extract().path("pickupPoint.id");
+
+        withAdmin()
+            .body(Map.of(
+                "communityId", freshCommunity,
+                "zipCode", "77777",            // ZIP only matches via the geozone
+                "streetAddress", "150 Main St"
+            ))
+        .when().post("/api/pickup-points/match")
+        .then()
+            .statusCode(200)
+            .body("pickupPoint.id", equalTo(ppId))
+            .body("pickupPoint.geozoneId", equalTo(geozoneId));
+    }
+
+    @Test
+    void matchPickupPointHonoursStreetRangeWhenMultipleCandidates() {
+        // Community with ONE active pickup point; the match should still check
+        // whether the given street number falls inside streetRangeStart..End.
+        int freshCommunity = withAdmin()
+            .body(Map.of("name", unique("SR Community")))
+        .when().post("/api/communities").then().statusCode(201)
+            .extract().path("community.id");
+
+        int ppId = withAdmin()
+            .body(Map.of(
+                "communityId", freshCommunity,
+                "address", "100 Elm St",
+                "zipCode", "54321",
+                "streetRangeStart", "100",
+                "streetRangeEnd", "199",
+                "hoursJson", "{}",
+                "capacity", 10
+            ))
+        .when().post("/api/pickup-points").then().statusCode(201)
+            .extract().path("pickupPoint.id");
+
+        // In-range street address — should return the pickup point.
+        withAdmin()
+            .body(Map.of(
+                "communityId", freshCommunity,
+                "zipCode", "54321",
+                "streetAddress", "150 Elm St"
+            ))
+        .when().post("/api/pickup-points/match")
+        .then()
+            .statusCode(200)
+            .body("pickupPoint.id", equalTo(ppId));
+    }
+
     /**
      * Creates a fresh community + one active pickup point with the given zip.
      * Ensures the "one active per community" constraint is respected by using

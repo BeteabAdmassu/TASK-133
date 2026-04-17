@@ -340,6 +340,150 @@ class EvaluationApiTest extends BaseIntegrationTest {
             .body("review.secondReviewerId", equalTo(secondReviewerId));
     }
 
+    // ─── Object-level auth tests ──────────────────────────────────────────────
+
+    @Test
+    void crossUserScorecardResponseEditReturns403() {
+        // Admin creates the scorecard, so evaluatorId = admin.id.
+        int cycleId = createCycle();
+        int templateId = createTemplate(cycleId, "PEER");
+        int metricId = addMetric(cycleId, templateId, "M", 100.0, 10.0);
+        int evaluateeId = findUserIdByUsername("auditor");
+        int scId = withAdmin()
+            .body(Map.of("templateId", templateId, "evaluateeId", evaluateeId, "cycleId", cycleId))
+        .when().post("/api/scorecards").then().statusCode(201)
+            .extract().path("scorecard.id");
+
+        // A different privileged user (ops_manager) must NOT be allowed to save
+        // responses on this scorecard — they are not the assigned evaluator.
+        asRole("OPS_MANAGER")
+            .body(Map.of("responses", java.util.List.of(Map.of("metricId", metricId, "score", 9.0))))
+        .when()
+            .put("/api/scorecards/" + scId + "/responses")
+        .then()
+            .statusCode(403)
+            .body("error.code", equalTo("FORBIDDEN"));
+    }
+
+    @Test
+    void nonAssignedReviewerApproveReturns403() {
+        // Admin creates review so reviewerId = admin.id.
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = withAdmin()
+            .body(Map.of("scorecardId", scId))
+        .when().post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        // Reviewer seed user is NOT the assigned reviewer — must be rejected.
+        asRole("REVIEWER")
+            .body(Map.of("notes", "Not my call"))
+        .when()
+            .post("/api/reviews/" + reviewId + "/approve")
+        .then()
+            .statusCode(403)
+            .body("error.code", equalTo("FORBIDDEN"));
+    }
+
+    @Test
+    void nonAssignedReviewerRejectReturns403() {
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = withAdmin()
+            .body(Map.of("scorecardId", scId))
+        .when().post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        asRole("REVIEWER")
+            .body(Map.of("notes", "Not my call"))
+        .when()
+            .post("/api/reviews/" + reviewId + "/reject")
+        .then()
+            .statusCode(403);
+    }
+
+    @Test
+    void reReviewMustFlowThroughAssignedSecondReviewer() {
+        // Step 0: create a dedicated "second expert" user.  The re-review
+        // business rule requires an EXPERT reviewer (REVIEWER role) who is
+        // distinct from the original reviewer, so we spin one up via the API.
+        String secondUsername = ("rev2_" + System.nanoTime()).replaceAll("\\W", "_");
+        if (secondUsername.length() > 50) secondUsername = secondUsername.substring(0, 50);
+        String secondPassword = "Second1234!";
+        int secondId = withAdmin()
+            .body(Map.of(
+                "username", secondUsername,
+                "password", secondPassword,
+                "displayName", "Second Reviewer",
+                "role", "REVIEWER",
+                "staffId", "S-REV2"
+            ))
+        .when().post("/api/users").then().statusCode(201)
+            .extract().path("user.id");
+        String secondToken = io.restassured.RestAssured.given()
+            .contentType("application/json")
+            .body(Map.of("username", secondUsername, "password", secondPassword))
+        .when().post("/api/auth/login").then().statusCode(200)
+            .extract().path("token");
+
+        // Step 1: primary REVIEWER creates the review (reviewerId = reviewer.id).
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = asRole("REVIEWER")
+            .body(Map.of("scorecardId", scId))
+        .when().post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        // Step 2: the assigned reviewer flags a conflict — sets status=RECUSED, conflictFlagged=true.
+        asRole("REVIEWER")
+            .body(Map.of("reason", "I have a prior relationship with the evaluatee"))
+        .when().post("/api/reviews/" + reviewId + "/flag-conflict")
+        .then().statusCode(200).body("review.conflictFlagged", equalTo(true));
+
+        // Step 3: with no second reviewer assigned, approval is blocked.
+        asRole("REVIEWER")
+            .body(Map.of("notes", "trying to approve after recusing"))
+        .when().post("/api/reviews/" + reviewId + "/approve")
+        .then().statusCode(anyOf(is(409), is(403)));
+
+        // Step 4: admin assigns the fresh REVIEWER user as second reviewer.
+        withAdmin()
+            .body(Map.of("reviewerId", secondId))
+        .when().post("/api/reviews/" + reviewId + "/assign-second")
+        .then().statusCode(200).body("review.secondReviewerId", equalTo(secondId));
+
+        // Step 5: the ORIGINAL reviewer still cannot approve (recused).
+        asRole("REVIEWER")
+            .body(Map.of("notes", "still trying"))
+        .when().post("/api/reviews/" + reviewId + "/approve")
+        .then().statusCode(403);
+
+        // Step 6: the assigned second reviewer CAN approve via its own token.
+        io.restassured.RestAssured.given()
+            .contentType("application/json")
+            .header("Authorization", "Bearer " + secondToken)
+            .body(Map.of("notes", "Reviewed fresh, looks fine"))
+        .when().post("/api/reviews/" + reviewId + "/approve")
+        .then().statusCode(200).body("review.status", equalTo("APPROVED"));
+    }
+
+    @Test
+    void activateAndCloseCycleViaDedicatedEndpoints() {
+        int cycleId = createCycle();
+        // DRAFT -> ACTIVE
+        withAdmin().when().post("/api/cycles/" + cycleId + "/activate").then()
+            .statusCode(200)
+            .body("cycle.id", equalTo(cycleId))
+            .body("cycle.status", equalTo("ACTIVE"));
+        // ACTIVE -> CLOSED
+        withAdmin().when().post("/api/cycles/" + cycleId + "/close").then()
+            .statusCode(200)
+            .body("cycle.status", equalTo("CLOSED"));
+    }
+
+    @Test
+    void activateCycleRequiresElevatedRole() {
+        int cycleId = createCycle();
+        asRole("AUDITOR").when().post("/api/cycles/" + cycleId + "/activate").then().statusCode(403);
+    }
+
     @Test
     void listReviewsReturnsPagedData() {
         withAdmin()

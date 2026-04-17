@@ -178,6 +178,46 @@ class UserApiTest extends BaseIntegrationTest {
     }
 
     @Test
+    void userResponsesNeverIncludePasswordHashOrStaffId() {
+        // GET /api/users/{id} — single-user fetch
+        withAdmin()
+        .when()
+            .get("/api/users/1")
+        .then()
+            .statusCode(200)
+            .body("user.passwordHash", nullValue())
+            .body("user.password_hash", nullValue())
+            .body("user.staffIdEncrypted", nullValue())
+            .body("user.staff_id_encrypted", nullValue())
+            // Safe fields still present
+            .body("user.username", notNullValue())
+            .body("user.role", notNullValue());
+
+        // GET /api/users — list
+        withAdmin()
+        .when()
+            .get("/api/users")
+        .then()
+            .statusCode(200)
+            .body("data.every { it.passwordHash == null && it.staffIdEncrypted == null }",
+                  equalTo(true));
+
+        // POST /api/auth/login response object — user payload must be clean too.
+        int rc = anonymous()
+            .body(Map.of("username", "admin", "password", "Admin1234!"))
+        .when()
+            .post("/api/auth/login")
+        .then()
+            .statusCode(200)
+            .body("user.passwordHash", nullValue())
+            .body("user.staffIdEncrypted", nullValue())
+            .extract().statusCode();
+        if (rc != 200) throw new AssertionError("Login smoke returned " + rc);
+        // The fresh login invalidates the cached admin token — refresh the cache.
+        invalidateTokenFor("SYSTEM_ADMIN");
+    }
+
+    @Test
     void deleteUserDeactivates() {
         int id = withAdmin()
             .body(Map.of(

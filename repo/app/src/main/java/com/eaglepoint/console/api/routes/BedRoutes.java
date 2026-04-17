@@ -108,10 +108,13 @@ public class BedRoutes {
             Long roomId = ctx.queryParam("roomId") != null ? Long.parseLong(ctx.queryParam("roomId")) : null;
             Long buildingId = ctx.queryParam("buildingId") != null ? Long.parseLong(ctx.queryParam("buildingId")) : null;
             String stateFilter = ctx.queryParam("state");
-            if (roomId != null || buildingId != null) {
-                ctx.json(PagedResponse.of(bedService.listBeds(roomId, buildingId, page, pageSize)));
+            var result = (roomId != null || buildingId != null)
+                ? bedService.listBeds(roomId, buildingId, page, pageSize)
+                : bedService.listAllBeds(page, pageSize, stateFilter);
+            if (ctx.queryParam("sort") != null || ctx.queryParam("fields") != null) {
+                ctx.json(com.eaglepoint.console.api.QueryShaper.shape(ctx, result));
             } else {
-                ctx.json(PagedResponse.of(bedService.listAllBeds(page, pageSize, stateFilter)));
+                ctx.json(PagedResponse.of(result));
             }
         });
 
