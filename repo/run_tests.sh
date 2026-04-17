@@ -39,39 +39,17 @@ fi
 echo "PASS: Health endpoint"
 echo ""
 
-# ---- Run unit + integration tests inside the backend container ----
-echo "Running Maven tests inside backend container..."
-docker compose exec -T backend sh -c "
-    cd /app &&
-    java -Xmx512m \
-         --enable-preview \
-         -Dapp.headless=true \
-         -Dapi.port=18080 \
-         -Ddb.path=':memory:' \
-         -DAPP_TEST_ENC_KEY='dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ==' \
-         -cp /app/console-headless.jar \
-         org.junit.platform.console.standalone.ConsoleLauncher \
-         --scan-classpath \
-         --exclude-engine=junit-vintage \
-         2>&1
-" || {
-    echo "FAIL: Tests failed inside container. Running fallback Maven test approach..."
-
-    # Fallback: Use maven surefire inside a fresh build container
-    docker run --rm \
-        -v "$(pwd)/backend:/build" \
-        -e APP_TEST_ENC_KEY="dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ==" \
-        -e DB_PATH=":memory:" \
-        eclipse-temurin:21-jdk-alpine \
-        sh -c "apk add --no-cache maven && cd /build && mvn test -q --no-transfer-progress 2>&1"
-    RESULT=$?
-    if [ $RESULT -ne 0 ]; then
-        echo "FAIL: Maven tests failed"
-        exit 1
-    fi
-}
-
+# ---- Run unit + integration tests inside a test-profile container ----
+echo "Building test image (target=tests)..."
+docker build --target tests -t task-133-backend-tests ./backend >/dev/null
+echo "Running Maven tests inside test container..."
+if ! docker run --rm task-133-backend-tests; then
+    echo "FAIL: Maven tests failed"
+    exit 1
+fi
+echo "PASS: Maven unit/integration tests"
 echo ""
+
 echo "=== API Smoke Tests ==="
 
 # ---- Login ----

@@ -57,10 +57,10 @@ class PickupPointServiceTest {
     }
 
     @Test
-    void pauseAlreadyPausedPointThrows() {
+    void pauseClosedPointThrows() {
         PickupPoint pp = new PickupPoint();
         pp.setId(1L);
-        pp.setStatus("PAUSED");
+        pp.setStatus("CLOSED");
 
         String futureTime = Instant.now().plus(1, ChronoUnit.DAYS).toString();
         when(ppRepo.findById(1L)).thenReturn(Optional.of(pp));

@@ -55,4 +55,8 @@ public class GeozoneRepository extends BaseRepository {
             g.getName(), g.getZipCodes(), g.getStreetRanges(), g.getId()
         );
     }
+
+    public void delete(long id) {
+        execute("DELETE FROM geozones WHERE id = ?", id);
+    }
 }

@@ -42,7 +42,7 @@ class AuthServiceTest {
         User user = new User();
         user.setId(1L);
         user.setUsername("admin");
-        user.setPasswordHash(PasswordUtil.hash("secret"));
+        user.setPasswordHash(PasswordUtil.hashPassword("secret"));
         user.setRole("SYSTEM_ADMIN");
         user.setActive(true);
 
@@ -50,7 +50,7 @@ class AuthServiceTest {
         when(tokenService.generateToken()).thenReturn("raw-token-abc");
         when(tokenService.hashToken("raw-token-abc")).thenReturn("hash-abc");
         doNothing().when(tokenRepo).deleteByUserId(1L);
-        doNothing().when(tokenRepo).insert(any(ApiToken.class));
+        when(tokenRepo.insert(any(ApiToken.class))).thenReturn(1L);
         doNothing().when(userRepo).updateLastLogin(anyLong(), anyString());
 
         @SuppressWarnings("unchecked")
@@ -65,7 +65,7 @@ class AuthServiceTest {
         User user = new User();
         user.setId(1L);
         user.setUsername("admin");
-        user.setPasswordHash(PasswordUtil.hash("secret"));
+        user.setPasswordHash(PasswordUtil.hashPassword("secret"));
         user.setActive(true);
 
         when(userRepo.findByUsername("admin")).thenReturn(Optional.of(user));
@@ -84,7 +84,7 @@ class AuthServiceTest {
         User user = new User();
         user.setId(1L);
         user.setUsername("admin");
-        user.setPasswordHash(PasswordUtil.hash("secret"));
+        user.setPasswordHash(PasswordUtil.hashPassword("secret"));
         user.setActive(false);
 
         when(userRepo.findByUsername("admin")).thenReturn(Optional.of(user));

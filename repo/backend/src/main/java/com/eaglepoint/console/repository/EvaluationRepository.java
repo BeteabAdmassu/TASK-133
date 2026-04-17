@@ -33,6 +33,10 @@ public class EvaluationRepository extends BaseRepository {
         return queryOne("SELECT * FROM evaluation_cycles WHERE id = ?", this::mapCycle, id);
     }
 
+    public Optional<EvaluationCycle> findCycleByName(String name) {
+        return queryOne("SELECT * FROM evaluation_cycles WHERE name = ?", this::mapCycle, name);
+    }
+
     public PagedResult<EvaluationCycle> findAllCycles(int page, int pageSize) {
         return paginate("SELECT * FROM evaluation_cycles ORDER BY start_date DESC",
             "SELECT COUNT(*) FROM evaluation_cycles", this::mapCycle, page, pageSize);
@@ -51,6 +55,10 @@ public class EvaluationRepository extends BaseRepository {
             "UPDATE evaluation_cycles SET name=?, start_date=?, end_date=?, status=?, updated_at=datetime('now') WHERE id=?",
             c.getName(), c.getStartDate(), c.getEndDate(), c.getStatus(), c.getId()
         );
+    }
+
+    public void deleteCycle(long id) {
+        execute("DELETE FROM evaluation_cycles WHERE id = ?", id);
     }
 
     public List<EvaluationCycle> findCyclesForArchival(String cutoffDate) {

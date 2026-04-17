@@ -3,12 +3,15 @@ package com.eaglepoint.console.api.routes;
 import com.eaglepoint.console.api.dto.PagedResponse;
 import com.eaglepoint.console.api.middleware.AuthMiddleware;
 import com.eaglepoint.console.service.GeozoneService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
 
 import java.util.List;
 import java.util.Map;
 
 public class GeozoneRoutes {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static void register(Javalin app, GeozoneService geozoneService) {
 
@@ -22,11 +25,10 @@ public class GeozoneRoutes {
         app.post("/api/geozones", ctx -> {
             AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
-            @SuppressWarnings("unchecked")
-            List<String> zipCodes = (List<String>) body.get("zipCodes");
+            String zipCodesJson = toJsonOrPassthrough(body.get("zipCodes"));
             ctx.status(201).json(Map.of("geozone", geozoneService.createGeozone(
                 (String) body.get("name"),
-                zipCodes,
+                zipCodesJson,
                 (String) body.get("streetRangesJson")
             )));
         });
@@ -41,12 +43,11 @@ public class GeozoneRoutes {
             AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
             long id = Long.parseLong(ctx.pathParam("id"));
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
-            @SuppressWarnings("unchecked")
-            List<String> zipCodes = body.get("zipCodes") != null ? (List<String>) body.get("zipCodes") : null;
+            String zipCodesJson = body.get("zipCodes") != null ? toJsonOrPassthrough(body.get("zipCodes")) : null;
             ctx.json(Map.of("geozone", geozoneService.updateGeozone(
                 id,
                 (String) body.get("name"),
-                zipCodes,
+                zipCodesJson,
                 (String) body.get("streetRangesJson")
             )));
         });
@@ -57,5 +58,13 @@ public class GeozoneRoutes {
             geozoneService.deleteGeozone(id);
             ctx.status(204);
         });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String toJsonOrPassthrough(Object value) throws Exception {
+        if (value == null) return null;
+        if (value instanceof String s) return s;
+        if (value instanceof List) return MAPPER.writeValueAsString((List<Object>) value);
+        return MAPPER.writeValueAsString(value);
     }
 }

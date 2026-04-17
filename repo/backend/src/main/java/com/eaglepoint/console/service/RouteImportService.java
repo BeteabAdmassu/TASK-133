@@ -49,6 +49,9 @@ public class RouteImportService {
         if (filename == null || (!filename.endsWith(".csv") && !filename.endsWith(".json"))) {
             throw new ValidationException("file", "File must have .csv or .json extension");
         }
+        if (fileContent == null || fileContent.length == 0) {
+            throw new ValidationException("file", "File must not be empty");
+        }
         RouteImport ri = new RouteImport();
         ri.setFilename(filename);
         ri.setImportedBy(importedBy);

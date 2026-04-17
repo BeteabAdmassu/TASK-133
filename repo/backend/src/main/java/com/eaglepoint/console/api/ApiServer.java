@@ -104,8 +104,9 @@ public class ApiServer {
         ExportRoutes.register(app, exportService);
         SystemRoutes.register(app, auditRepo, systemLogRepo, scheduledJobRepo, jobScheduler);
 
-        app.start("127.0.0.1", port);
-        log.info("API server started on 127.0.0.1:{}", port);
+        String bindHost = System.getProperty("api.bind", System.getenv().getOrDefault("API_BIND", "127.0.0.1"));
+        app.start(bindHost, port);
+        log.info("API server started on {}:{}", bindHost, port);
 
         // Resume incomplete jobs on startup
         exportService.resumeIncompleteJobs();

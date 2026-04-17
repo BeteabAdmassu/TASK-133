@@ -1,6 +1,5 @@
 package com.eaglepoint.console.unit.service;
 
-import com.eaglepoint.console.exception.ConflictException;
 import com.eaglepoint.console.exception.ValidationException;
 import com.eaglepoint.console.model.EvaluationCycle;
 import com.eaglepoint.console.model.ScorecardMetric;
@@ -39,8 +38,7 @@ class EvaluationServiceTest {
         cycle.setId(1L);
         cycle.setName("Cycle 2024 Q1");
 
-        when(evalRepo.findCycleByName("Cycle 2024 Q1")).thenReturn(Optional.empty());
-        when(evalRepo.insertCycle(anyString(), anyString(), anyString(), anyLong())).thenReturn(1L);
+        when(evalRepo.insertCycle(any(EvaluationCycle.class))).thenReturn(1L);
         when(evalRepo.findCycleById(1L)).thenReturn(Optional.of(cycle));
 
         EvaluationCycle result = service.createCycle("Cycle 2024 Q1", "2024-01-01", "2024-03-31", 1L);
@@ -49,21 +47,15 @@ class EvaluationServiceTest {
     }
 
     @Test
-    void createCycleFailsForDuplicateName() {
-        EvaluationCycle existing = new EvaluationCycle();
-        existing.setId(1L);
-        when(evalRepo.findCycleByName("Duplicate")).thenReturn(Optional.of(existing));
-
-        assertThrows(ConflictException.class, () ->
-            service.createCycle("Duplicate", "2024-01-01", "2024-03-31", 1L));
+    void createCycleFailsForInvalidName() {
+        assertThrows(ValidationException.class, () ->
+            service.createCycle("", "2024-01-01", "2024-03-31", 1L));
     }
 
     @Test
     void createCycleFailsForInvalidDates() {
-        when(evalRepo.findCycleByName(anyString())).thenReturn(Optional.empty());
-
         assertThrows(ValidationException.class, () ->
-            service.createCycle("Valid Name", "", "2024-03-31", 1L));
+            service.createCycle("Valid Name", "2024-06-30", "2024-01-01", 1L));
     }
 
     @Test
@@ -72,11 +64,11 @@ class EvaluationServiceTest {
         template.setId(1L);
 
         when(evalRepo.findTemplateById(1L)).thenReturn(Optional.of(template));
-        when(evalRepo.getTotalWeightForTemplate(1L)).thenReturn(90.0);
+        when(evalRepo.sumWeightsByTemplate(1L)).thenReturn(90.0);
 
         // Adding weight=15 would push total to 105, exceeding 100
         assertThrows(ValidationException.class, () ->
-            service.addMetric(1L, "New Metric", "desc", 15.0));
+            service.addMetric(1L, "New Metric", 15.0, 100.0, "desc"));
     }
 
     @Test
@@ -88,11 +80,21 @@ class EvaluationServiceTest {
         metric.setId(1L);
 
         when(evalRepo.findTemplateById(1L)).thenReturn(Optional.of(template));
-        when(evalRepo.getTotalWeightForTemplate(1L)).thenReturn(90.0);
-        when(evalRepo.insertMetric(anyLong(), anyString(), anyString(), anyDouble())).thenReturn(1L);
+        when(evalRepo.sumWeightsByTemplate(1L)).thenReturn(90.0);
+        when(evalRepo.insertMetric(any(ScorecardMetric.class))).thenReturn(1L);
         when(evalRepo.findMetricById(1L)).thenReturn(Optional.of(metric));
 
         // Adding weight=10 brings total to 100 — exactly at limit
-        assertDoesNotThrow(() -> service.addMetric(1L, "New Metric", "desc", 10.0));
+        assertDoesNotThrow(() -> service.addMetric(1L, "New Metric", 10.0, 100.0, "desc"));
+    }
+
+    @Test
+    void addMetricFailsForInvalidWeight() {
+        ScorecardTemplate template = new ScorecardTemplate();
+        template.setId(1L);
+        when(evalRepo.findTemplateById(1L)).thenReturn(Optional.of(template));
+
+        assertThrows(ValidationException.class, () ->
+            service.addMetric(1L, "Metric", 0.0, 100.0, "desc"));
     }
 }

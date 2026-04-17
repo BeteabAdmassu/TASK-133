@@ -9,6 +9,7 @@ public class PagedResponse<T> {
     private int total;
     private int page;
     private int pageSize;
+    private int totalPages;
 
     public static <T> PagedResponse<T> of(PagedResult<T> result) {
         PagedResponse<T> r = new PagedResponse<>();
@@ -16,6 +17,9 @@ public class PagedResponse<T> {
         r.total = result.getTotal();
         r.page = result.getPage();
         r.pageSize = result.getPageSize();
+        r.totalPages = result.getPageSize() > 0
+            ? (int) Math.ceil((double) result.getTotal() / result.getPageSize())
+            : 0;
         return r;
     }
 
@@ -23,4 +27,5 @@ public class PagedResponse<T> {
     public int getTotal() { return total; }
     public int getPage() { return page; }
     public int getPageSize() { return pageSize; }
+    public int getTotalPages() { return totalPages; }
 }

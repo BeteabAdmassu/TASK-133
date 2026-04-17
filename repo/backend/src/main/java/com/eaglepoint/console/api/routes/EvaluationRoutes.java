@@ -8,6 +8,7 @@ import com.eaglepoint.console.service.EvaluationService;
 import com.eaglepoint.console.service.ReviewService;
 import io.javalin.Javalin;
 
+import java.util.List;
 import java.util.Map;
 
 public class EvaluationRoutes {
@@ -46,7 +47,7 @@ public class EvaluationRoutes {
             long id = Long.parseLong(ctx.pathParam("id"));
             Map<String, String> body = ctx.bodyAsClass(Map.class);
             ctx.json(Map.of("cycle", evalService.updateCycle(
-                id, body.get("name"), body.get("startDate"), body.get("endDate"), body.get("status")
+                id, body.get("name"), body.get("startDate"), body.get("endDate")
             )));
         });
 
@@ -61,9 +62,7 @@ public class EvaluationRoutes {
         app.get("/api/cycles/{cycleId}/templates", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
             long cycleId = Long.parseLong(ctx.pathParam("cycleId"));
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
-            ctx.json(PagedResponse.of(evalService.listTemplates(cycleId, page, pageSize)));
+            ctx.json(Map.of("templates", evalService.listTemplates(cycleId)));
         });
 
         app.post("/api/cycles/{cycleId}/templates", ctx -> {
@@ -80,8 +79,10 @@ public class EvaluationRoutes {
             long templateId = Long.parseLong(ctx.pathParam("templateId"));
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             double weight = Double.parseDouble(body.get("weight").toString());
+            double maxScore = body.get("maxScore") != null
+                ? Double.parseDouble(body.get("maxScore").toString()) : 100.0;
             ctx.status(201).json(Map.of("metric", evalService.addMetric(
-                templateId, (String) body.get("name"), (String) body.get("description"), weight
+                templateId, (String) body.get("name"), weight, maxScore, (String) body.get("description")
             )));
         });
 
@@ -90,8 +91,7 @@ public class EvaluationRoutes {
             AuthMiddleware.getCurrentUser(ctx);
             int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
             int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
-            Long cycleId = ctx.queryParam("cycleId") != null ? Long.parseLong(ctx.queryParam("cycleId")) : null;
-            ctx.json(PagedResponse.of(evalService.listScorecards(cycleId, page, pageSize)));
+            ctx.json(PagedResponse.of(evalService.listScorecards(page, pageSize)));
         });
 
         app.post("/api/scorecards", ctx -> {
@@ -102,7 +102,7 @@ public class EvaluationRoutes {
             long evaluateeId = Long.parseLong(body.get("evaluateeId").toString());
             long cycleId = Long.parseLong(body.get("cycleId").toString());
             ctx.status(201).json(Map.of("scorecard", evalService.createScorecard(
-                templateId, evaluateeId, cycleId, user.getId()
+                cycleId, templateId, evaluateeId, user.getId()
             )));
         });
 
@@ -117,7 +117,19 @@ public class EvaluationRoutes {
             User user = AuthMiddleware.getCurrentUser(ctx);
             long id = Long.parseLong(ctx.pathParam("id"));
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
-            ctx.json(Map.of("scorecard", evalService.saveResponses(id, body, user.getId())));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rawResponses = (List<Map<String, Object>>) body.get("responses");
+            List<com.eaglepoint.console.service.EvaluationService.ResponseInput> responses = new java.util.ArrayList<>();
+            if (rawResponses != null) {
+                for (Map<String, Object> r : rawResponses) {
+                    var input = new com.eaglepoint.console.service.EvaluationService.ResponseInput();
+                    input.metricId = Long.parseLong(r.get("metricId").toString());
+                    input.score = Double.parseDouble(r.get("score").toString());
+                    input.comments = r.get("comments") != null ? r.get("comments").toString() : null;
+                    responses.add(input);
+                }
+            }
+            ctx.json(Map.of("scorecard", evalService.saveResponses(id, user.getId(), responses)));
         });
 
         app.post("/api/scorecards/{id}/submit", ctx -> {
@@ -131,7 +143,7 @@ public class EvaluationRoutes {
             User user = AuthMiddleware.getCurrentUser(ctx);
             long id = Long.parseLong(ctx.pathParam("id"));
             Map<String, String> body = ctx.bodyAsClass(Map.class);
-            ctx.json(Map.of("scorecard", evalService.recuseScorecard(id, body.get("reason"), user.getId())));
+            ctx.json(Map.of("scorecard", evalService.recuseScorecard(id, user.getId(), body.get("reason"))));
         });
 
         // --- Reviews ---

@@ -42,6 +42,10 @@ public class PickupPointService {
         validateCapacity(capacity);
         validateHoursJson(hoursJson);
 
+        if (ppRepo.countActiveByCommunity(communityId) > 0) {
+            throw new ConflictException("Community already has an active pickup point");
+        }
+
         PickupPoint pp = new PickupPoint();
         pp.setCommunityId(communityId);
         pp.setAddressEncrypted(encryptionUtil.encrypt(address));
@@ -88,17 +92,16 @@ public class PickupPointService {
         if (reason == null || reason.isBlank() || reason.length() > 500) {
             throw new ValidationException("reason", "Pause reason must be 1-500 characters");
         }
-        if (pausedUntil == null || pausedUntil.isBlank()) {
-            throw new ValidationException("pausedUntil", "Pause until date is required");
-        }
-        try {
-            Instant until = Instant.parse(pausedUntil);
-            if (!until.isAfter(Instant.now())) {
-                throw new ValidationException("pausedUntil", "Pause until must be in the future");
+        if (pausedUntil != null && !pausedUntil.isBlank()) {
+            try {
+                Instant until = Instant.parse(pausedUntil);
+                if (!until.isAfter(Instant.now())) {
+                    throw new ValidationException("pausedUntil", "Pause until must be in the future");
+                }
+            } catch (Exception e) {
+                if (e instanceof ValidationException) throw e;
+                throw new ValidationException("pausedUntil", "pausedUntil must be a valid ISO-8601 datetime");
             }
-        } catch (Exception e) {
-            if (e instanceof ValidationException) throw e;
-            throw new ValidationException("pausedUntil", "pausedUntil must be a valid ISO-8601 datetime");
         }
         if (!"ACTIVE".equals(pp.getStatus()) && !"PAUSED".equals(pp.getStatus())) {
             throw new ConflictException("Only ACTIVE or PAUSED pickup points can be paused");

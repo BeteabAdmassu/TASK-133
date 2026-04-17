@@ -47,6 +47,11 @@ public class GeozoneService {
         return geozoneRepo.findById(id).orElseThrow();
     }
 
+    public void deleteGeozone(long id) {
+        geozoneRepo.findById(id).orElseThrow(() -> new NotFoundException("Geozone", id));
+        geozoneRepo.delete(id);
+    }
+
     public Optional<Geozone> matchByZip(String zipCode, String streetAddress) {
         List<Geozone> candidates = geozoneRepo.findByZipCode(zipCode);
         if (candidates.isEmpty()) return Optional.empty();

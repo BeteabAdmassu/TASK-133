@@ -14,6 +14,12 @@ RUN apk add --no-cache maven && \
 # Build headless fat JAR (excludes JavaFX)
 RUN mvn package -DskipTests -q -P headless
 
+# Test stage — runs mvn test when invoked via `docker build --target tests`
+FROM builder AS tests
+ENV APP_HEADLESS=true \
+    APP_TEST_ENC_KEY=dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ==
+CMD ["mvn", "test", "-q", "--no-transfer-progress"]
+
 # Stage 2 — Runtime
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
@@ -40,6 +46,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
 
 ENV APP_HEADLESS=true \
     API_PORT=8080 \
+    API_BIND=0.0.0.0 \
     DB_PATH=/app/data/console.db \
     BACKUP_DIR=/app/data/backups \
     LOG_DIR=/app/logs

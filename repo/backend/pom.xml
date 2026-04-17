@@ -53,16 +53,11 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- Embedded API server -->
+    <!-- Embedded API server (Javalin bundles its own compatible Jetty) -->
     <dependency>
       <groupId>io.javalin</groupId>
       <artifactId>javalin</artifactId>
       <version>${javalin.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.eclipse.jetty</groupId>
-      <artifactId>jetty-server</artifactId>
-      <version>12.0.9</version>
     </dependency>
 
     <!-- Database -->

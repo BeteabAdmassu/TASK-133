@@ -23,8 +23,12 @@ public class EvaluationService {
     public EvaluationCycle createCycle(String name, String startDate, String endDate, long createdBy) {
         validateCycleName(name);
         validateDates(startDate, endDate);
+        String trimmedName = name.trim();
+        if (evalRepo.findCycleByName(trimmedName).isPresent()) {
+            throw new ConflictException("An evaluation cycle with this name already exists");
+        }
         EvaluationCycle c = new EvaluationCycle();
-        c.setName(name.trim());
+        c.setName(trimmedName);
         c.setStartDate(startDate);
         c.setEndDate(endDate);
         c.setStatus("DRAFT");
@@ -52,6 +56,14 @@ public class EvaluationService {
         if (startDate != null || endDate != null) validateDates(c.getStartDate(), c.getEndDate());
         evalRepo.updateCycle(c);
         return evalRepo.findCycleById(id).orElseThrow();
+    }
+
+    public void deleteCycle(long id) {
+        EvaluationCycle c = evalRepo.findCycleById(id).orElseThrow(() -> new NotFoundException("EvaluationCycle", id));
+        if (!"DRAFT".equals(c.getStatus())) {
+            throw new ConflictException("Only DRAFT cycles can be deleted");
+        }
+        evalRepo.deleteCycle(id);
     }
 
     public EvaluationCycle activateCycle(long id) {

@@ -1,9 +1,9 @@
 -- Seed admin user (password: Admin1234!)
--- BCrypt hash of "Admin1234!" with cost 12
+-- BCrypt hash of "Admin1234!" with cost 12 (verified against org.mindrot:jbcrypt:0.4)
 INSERT OR IGNORE INTO users (username, password_hash, display_name, role, staff_id_encrypted, is_active)
 VALUES (
   'admin',
-  '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewEPD0PNKkNM0EAi',
+  '$2a$12$g9JblFv8QrTN/2VP2SOA/OFwv8AQqx1/VSMacPvXZfqmuRTAXpofa',
   'System Administrator',
   'SYSTEM_ADMIN',
   'SEED',

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,8 +16,8 @@ class EncryptionUtilTest {
     void setUp() throws Exception {
         KeyGenerator kg = KeyGenerator.getInstance("AES");
         kg.init(256);
-        SecretKey key = kg.generateKey();
-        encryptionUtil = new EncryptionUtil(key);
+        byte[] keyBytes = kg.generateKey().getEncoded();
+        encryptionUtil = new EncryptionUtil(keyBytes);
     }
 
     @Test
@@ -41,8 +40,8 @@ class EncryptionUtilTest {
     }
 
     @Test
-    void encryptNullThrowsOrHandlesGracefully() {
-        assertThrows(Exception.class, () -> encryptionUtil.encrypt(null));
+    void encryptNullReturnsNull() {
+        assertNull(encryptionUtil.encrypt(null));
     }
 
     @Test

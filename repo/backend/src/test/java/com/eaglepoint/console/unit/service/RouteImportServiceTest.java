@@ -41,7 +41,7 @@ class RouteImportServiceTest {
         RouteImport importObj = new RouteImport();
         importObj.setId(1L);
 
-        when(routeImportRepo.insert(anyString(), anyLong(), anyInt())).thenReturn(1L);
+        when(routeImportRepo.insert(any(RouteImport.class))).thenReturn(1L);
         when(routeImportRepo.findById(1L)).thenReturn(Optional.of(importObj));
 
         RouteImport result = service.startImport("route.csv", content, 1L);
