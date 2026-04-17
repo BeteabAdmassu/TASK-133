@@ -397,36 +397,50 @@ Points.
 
 ---
 
-## Offline Update Packages (signed .msi workflow)
+## Offline Update Packages (signed `.msi` installer + rollback)
 
-The prompt requires offline package-based updates with signed installer
-and one-click rollback.  The on-disk layout mirrors a typical
-`C:\ProgramData\EaglePoint\updater\` folder and lives alongside the
-SQLite database:
+The prompt requires offline package-based updates delivered as signed
+Windows Installer `.msi` files with one-click rollback.  The on-disk
+layout mirrors a typical `C:\ProgramData\EaglePoint\updater\` folder
+and lives alongside the SQLite database:
 
 ```
 ${DB_PATH parent}/updater/
-├── incoming/                       ← operators drop signed packages here
+├── incoming/                       ← operators drop signed .msi packages here
 │   └── eaglepoint-1.2.0/
-│       ├── manifest.json           ← version + payloadFilename + payloadSha256
+│       ├── manifest.json           ← see schema below
 │       ├── manifest.sig            ← detached Ed25519 signature over manifest.json
-│       └── payload.zip             ← the actual installer (referenced in manifest)
-├── installed/                      ← payload of currently running version
-└── backups/                        ← previous payloads, used on rollback
+│       └── eaglepoint-1.2.0.msi    ← the Windows Installer — SHA-256 pinned in manifest
+├── installed/                      ← files of currently-running version
+├── backups/                        ← previous versions, used on rollback
+└── logs/                           ← msiexec /l*v output per operation
 ```
 
 ### Manifest schema (`manifest.json`)
 
 ```json
 {
-  "version": "1.2.0",
-  "payloadFilename": "payload.zip",
-  "payloadSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "payloadSize": 12345678,
-  "signingKeyId": "eaglepoint-release-2026",
-  "releaseNotes": "Bed-board paging fix, route-import retry logic"
+  "version":          "1.2.0",
+  "installerType":    "MSI",
+  "installerFile":    "eaglepoint-1.2.0.msi",
+  "payloadFilename":  "eaglepoint-1.2.0.msi",
+  "payloadSha256":    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "payloadSize":      18234880,
+  "productCode":      "{12345678-1234-1234-1234-1234567890AB}",
+  "upgradeCode":      "{ABCDEF01-2345-6789-ABCD-EF0123456789}",
+  "installArgs":      ["INSTALLDIR=C:\\EaglePoint", "ENVIRONMENT=prod"],
+  "signingKeyId":     "eaglepoint-release-2026",
+  "releaseNotes":     "Bed-board paging fix, route-import retry logic"
 }
 ```
+
+Server-side validation is strict — the apply pipeline aborts before any
+installer command runs when:
+
+- `installerType=MSI` without a matching `installerFile`.
+- `productCode` is not a Windows Installer GUID.
+- an `installArgs` entry is not `KEY=VALUE` with an upper-snake-case key.
+- an `installArgs` value contains `& | ; < > $` backtick or newline.
 
 ### Signature trust material
 
@@ -440,29 +454,77 @@ ${DB_PATH parent}/updater/
 - If no trust key is configured, every verify call returns
   `signatureStatus=UNTRUSTED` and `apply` is refused.
 
+### Installer execution
+
+The server resolves an `InstallerExecutor` at startup
+(`com.eaglepoint.console.service.updater.InstallerExecutorFactory`):
+
+| Condition | Executor |
+|---|---|
+| `installer.mode=test` system property OR `UPDATER_INSTALLER_MODE=test` env var | `TestModeInstallerExecutor` — in-process, deterministic, used by CI + dev |
+| Non-Windows OS | `TestModeInstallerExecutor` (docker containers never shell out to `msiexec`) |
+| Windows, default | `MsiExecInstallerExecutor` — runs `msiexec.exe /i` / `/x` |
+
+On a real Windows host the commands issued are:
+
+```
+msiexec.exe /i <installerFile> /qn /norestart /l*v <log> KEY=VALUE...
+msiexec.exe /x <productCode>   /qn /norestart /l*v <log>
+```
+
+Process output is redirected straight to the per-operation log under
+`${updater.dir}/logs/`; the command line itself is never echoed to
+application logs and the private key / signature bytes are never
+printed anywhere.  A hard 15-minute timeout kills any stuck installer
+process so the API caller never blocks indefinitely.
+
 ### REST surface
 
 | Method | Path | Description |
 |---|---|---|
 | `GET`  | `/api/updates/packages` | List parsed package directories under `incoming/` |
-| `POST` | `/api/updates/packages/{name}/verify` | Re-check signature + payload SHA-256 (no side effects other than an audit row) |
-| `POST` | `/api/updates/packages/{name}/apply` | Verify → move current `installed/` → `backups/` → promote package → record `INSTALLED` |
-| `POST` | `/api/updates/rollback` | Restore the most recent prior installed payload; records `ROLLED_BACK` |
+| `POST` | `/api/updates/packages/{name}/verify` | Re-check signature + installer SHA-256 (no installer command runs) |
+| `POST` | `/api/updates/packages/{name}/apply` | verify → promote files → `msiexec /i` → record `exitCode` + `logPath` |
+| `POST` | `/api/updates/rollback` | `msiexec /x` current product → restore backup → `msiexec /i` previous |
 | `GET`  | `/api/updates/history` | Recent history rows (SYSTEM_ADMIN + AUDITOR) |
 | `GET`  | `/api/updates/current`  | Current installed row or `null` |
 
 All routes are gated by `SYSTEM_ADMIN`.  Every state change writes a row
-to `update_history` (`V3__update_history.sql`) **and** emits an audit
-event via `AuditService` (`entityType=UpdatePackage`, actions
-`UPDATE_APPLIED`, `UPDATE_ROLLBACK`, `UPDATE_REJECTED`, `UPDATE_FAILED`).
+to `update_history` (migrations `V3__update_history.sql` +
+`V4__update_history_installer_cols.sql`, which adds `exit_code`,
+`log_path`, `installer_type`) **and** emits an audit event via
+`AuditService` — actions `UPDATE_APPLIED`, `UPDATE_ROLLBACK`,
+`UPDATE_ROLLBACK_FAILED`, `UPDATE_REJECTED`, `UPDATE_FAILED`.
 
 ### Rollback semantics
 
-`POST /api/updates/rollback` looks up the latest successful
-`INSTALLED` row, then walks backwards for the prior `INSTALLED` row.
-The file-system step moves the current payload aside (into `backups/`)
-and moves the prior backup into `installed/` atomically.  If no prior
-version is on record the endpoint returns **409 CONFLICT**.
+`POST /api/updates/rollback` is the one-click rollback:
+
+1. Find the latest successful `INSTALLED` row and the prior
+   `INSTALLED` row; **409 CONFLICT** if either is missing.
+2. If the current install has a `productCode`, run `msiexec /x` against
+   it.  A non-zero exit aborts with
+   `INSTALLER_EXECUTION_FAILED: uninstall exit=<n>` and records a
+   `ROLLED_BACK/FAILED` history row (with the exit code + log path).
+3. Move the current `installed/` directory into `backups/`, then move
+   the prior backup into `installed/`.
+4. If the restored directory still contains an MSI, run `msiexec /i`
+   against it so the Windows Installer state matches the filesystem.
+5. Write a `ROLLED_BACK/SUCCESS` history row with the uninstall /
+   reinstall exit codes and log paths.
+
+### Failure reason categories
+
+`apply` and `rollback` map every terminal failure to one of:
+
+- `SIGNATURE_INVALID` / `SIGNATURE_UNTRUSTED`
+- `MANIFEST_INVALID` (bad installer field, bad productCode, unsafe installArg)
+- `INSTALLER_EXECUTION_FAILED` (`exit != 0`)
+- `ROLLBACK_TARGET_MISSING` (no prior install or backup gone)
+- `UNEXPECTED` (filesystem IO error during promote/restore)
+
+The reason is prefixed on `error.message` so clients can classify
+failures without parsing prose.
 
 ---
 

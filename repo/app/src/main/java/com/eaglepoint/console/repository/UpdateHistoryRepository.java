@@ -30,19 +30,24 @@ public class UpdateHistoryRepository extends BaseRepository {
         e.setInitiatedBy(getNullableLong(rs, "initiated_by"));
         e.setOccurredAt(rs.getString("occurred_at"));
         e.setNotes(rs.getString("notes"));
+        e.setExitCode(getNullableInt(rs, "exit_code"));
+        e.setLogPath(rs.getString("log_path"));
+        e.setInstallerType(rs.getString("installer_type"));
         return e;
     }
 
     public long insert(UpdateHistoryEntry e) {
         return insertAndGetId(
             "INSERT INTO update_history (package_name, from_version, to_version, action, status, " +
-            "sha256_hash, signature_status, installed_path, backup_path, error_message, initiated_by, notes) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "sha256_hash, signature_status, installed_path, backup_path, error_message, initiated_by, notes, " +
+            "exit_code, log_path, installer_type) " +
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             e.getPackageName(), e.getFromVersion(), e.getToVersion(),
             e.getAction(), e.getStatus(),
             e.getSha256Hash(), e.getSignatureStatus(),
             e.getInstalledPath(), e.getBackupPath(), e.getErrorMessage(),
-            e.getInitiatedBy(), e.getNotes()
+            e.getInitiatedBy(), e.getNotes(),
+            e.getExitCode(), e.getLogPath(), e.getInstallerType()
         );
     }
 

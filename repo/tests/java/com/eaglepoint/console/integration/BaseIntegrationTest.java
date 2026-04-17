@@ -11,6 +11,12 @@ import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.BeforeAll;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,6 +41,42 @@ public abstract class BaseIntegrationTest {
     protected static final int TEST_PORT = 18080;
     private static final AtomicBoolean SERVER_STARTED = new AtomicBoolean(false);
     private static final Map<String, String> TOKEN_CACHE = new HashMap<>();
+
+    /**
+     * Shared Ed25519 keypair for integration tests that need to sign
+     * update-package manifests.  Generated eagerly at class load so the
+     * public key lands in {@code updater.public.key} BEFORE the
+     * {@link ApiServer} constructs the signature verifier.  Tests access
+     * the private key via {@link #updaterSigningKeys()}.
+     */
+    private static final KeyPair UPDATER_KEYS;
+    /** Updater working dir for integration tests (incoming/ installed/ backups/ logs/). */
+    protected static final Path UPDATER_DIR;
+
+    static {
+        try {
+            UPDATER_KEYS = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+            String spki = Base64.getEncoder().encodeToString(UPDATER_KEYS.getPublic().getEncoded());
+            System.setProperty("updater.public.key", spki);
+            UPDATER_DIR = Paths.get("updater-itest").toAbsolutePath();
+            // Wipe any packages/state left behind by a prior test run so the
+            // new Ed25519 keypair actually matches the signatures on disk.
+            if (Files.exists(UPDATER_DIR)) {
+                try (var walk = Files.walk(UPDATER_DIR)) {
+                    walk.sorted(java.util.Comparator.reverseOrder())
+                        .forEach(p -> { try { Files.deleteIfExists(p); } catch (Exception ignored) {} });
+                }
+            }
+            Files.createDirectories(UPDATER_DIR.resolve("incoming"));
+            System.setProperty("updater.dir", UPDATER_DIR.toString());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static KeyPair updaterSigningKeys() {
+        return UPDATER_KEYS;
+    }
 
     /** Demo credentials as seeded by V2__seed_admin_user.sql. */
     protected static final Map<String, String> CREDENTIALS = Map.of(
@@ -61,6 +103,9 @@ public abstract class BaseIntegrationTest {
         // container still uses the default 60/min — this override only affects
         // the embedded server started by the tests.
         System.setProperty("rate.limit.max", "10000");
+        // Force the updater to use the deterministic test-mode installer so
+        // integration tests never shell out to a real msiexec / subprocess.
+        System.setProperty("installer.mode", "test");
 
         LoggingConfig.init();
         AppConfig.init();

@@ -15,6 +15,9 @@ public class UpdateHistoryEntry {
     private Long initiatedBy;
     private String occurredAt;
     private String notes;
+    private Integer exitCode;
+    private String logPath;
+    private String installerType;
 
     public long getId() { return id; }
     public void setId(long id) { this.id = id; }
@@ -44,4 +47,10 @@ public class UpdateHistoryEntry {
     public void setOccurredAt(String occurredAt) { this.occurredAt = occurredAt; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public Integer getExitCode() { return exitCode; }
+    public void setExitCode(Integer exitCode) { this.exitCode = exitCode; }
+    public String getLogPath() { return logPath; }
+    public void setLogPath(String logPath) { this.logPath = logPath; }
+    public String getInstallerType() { return installerType; }
+    public void setInstallerType(String installerType) { this.installerType = installerType; }
 }

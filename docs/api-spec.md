@@ -186,18 +186,76 @@ REPORT jobs execute through the same `ExportService` pipeline as ad-hoc
 exports, meaning atomic `.part` → rename, SHA-256 sidecar, and
 crash-safe resume.
 
-### Updates (offline signed packages + rollback)
+### Updates (offline signed `.msi` installer + rollback)
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/api/updates/packages` | SYSTEM_ADMIN | enumerates `${updater.dir}/incoming/*` |
-| POST | `/api/updates/packages/{name}/verify` | SYSTEM_ADMIN | Ed25519 signature + payload SHA-256 check |
-| POST | `/api/updates/packages/{name}/apply` | SYSTEM_ADMIN | verify, move current payload to `backups/`, promote new package |
-| POST | `/api/updates/rollback` | SYSTEM_ADMIN | one-click rollback to previous installed payload |
-| GET | `/api/updates/history` | SYSTEM_ADMIN, AUDITOR | recent rows from `update_history` |
+| POST | `/api/updates/packages/{name}/verify` | SYSTEM_ADMIN | Ed25519 signature + installer SHA-256 check (no installer is launched) |
+| POST | `/api/updates/packages/{name}/apply` | SYSTEM_ADMIN | verify → promote files → `msiexec /i` → record exit code + log |
+| POST | `/api/updates/rollback` | SYSTEM_ADMIN | one-click rollback: `msiexec /x` current product → restore backup → `msiexec /i` previous |
+| GET | `/api/updates/history` | SYSTEM_ADMIN, AUDITOR | recent rows from `update_history` (includes `exitCode`, `logPath`, `installerType`) |
 | GET | `/api/updates/current` | SYSTEM_ADMIN, AUDITOR | currently-installed row or `null` |
 
-Trust material is loaded (first match wins) from:
+#### Manifest schema (`manifest.json`)
+
+```json
+{
+  "version":          "1.2.0",
+  "installerType":    "MSI",
+  "installerFile":    "eaglepoint-1.2.0.msi",
+  "payloadFilename":  "eaglepoint-1.2.0.msi",
+  "payloadSha256":    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "payloadSize":      18234880,
+  "productCode":      "{12345678-1234-1234-1234-1234567890AB}",
+  "upgradeCode":      "{ABCDEF01-2345-6789-ABCD-EF0123456789}",
+  "installArgs":      ["INSTALLDIR=C:\\EaglePoint", "ENVIRONMENT=prod"],
+  "signingKeyId":     "eaglepoint-release-2026"
+}
+```
+
+Server-side validation:
+
+- `version`, `installerFile` (when `installerType=MSI`), `payloadSha256` are required.
+- `installerType` must be `MSI` or `NONE`.
+- `productCode` must be a Windows Installer GUID (braced or unbraced).
+- `installArgs` entries must match `KEY=VALUE`, keys upper-snake-case, values must not contain
+  `& | ; < > $` backtick CR LF; each entry capped at 256 chars.
+- `installerType=MSI` without `installerFile` → `400 VALIDATION_ERROR`.
+
+#### Response body (successful apply)
+
+```json
+{
+  "update": {
+    "id":              17,
+    "action":          "INSTALLED",
+    "status":          "SUCCESS",
+    "packageName":     "eaglepoint-1.2.0",
+    "toVersion":       "1.2.0",
+    "fromVersion":     "1.1.0",
+    "installerType":   "MSI",
+    "exitCode":        0,
+    "logPath":         "/app/data/updater/logs/eaglepoint-1.2.0-install-20260417-140522.log",
+    "signatureStatus": "VALID",
+    "installedPath":   "/app/data/updater/installed/eaglepoint-1.2.0"
+  }
+}
+```
+
+#### Failure reason categories (returned as `VALIDATION_ERROR` / `CONFLICT`)
+
+| Reason | When |
+|---|---|
+| `SIGNATURE_INVALID` | Ed25519 signature or binary SHA-256 does not match |
+| `SIGNATURE_UNTRUSTED` | No trust key is loaded |
+| `MANIFEST_INVALID` | Required installer field missing, bad GUID, unsafe installArg |
+| `INSTALLER_EXECUTION_FAILED` | `msiexec` returned non-zero; log path recorded on the history row |
+| `ROLLBACK_TARGET_MISSING` | No prior INSTALLED row, or prior backup is gone from disk |
+
+#### Trust material
+
+Loaded (first match wins) from:
 
 1. `UPDATER_PUBLIC_KEY` env var (base64 X.509 SPKI)
 2. System property `updater.public.key`
@@ -207,8 +265,24 @@ Trust material is loaded (first match wins) from:
 If no key is loaded, every verify call returns
 `{"signatureStatus":"UNTRUSTED","valid":false}` and `apply` refuses to
 run.  Apply, rollback, and reject events write to
-`update_history` (see migration `V3__update_history.sql`) and emit
-audit events under `entityType=UpdatePackage`.
+`update_history` (see migrations `V3__update_history.sql` +
+`V4__update_history_installer_cols.sql`) and emit audit events under
+`entityType=UpdatePackage` with actions `UPDATE_APPLIED`,
+`UPDATE_REJECTED`, `UPDATE_FAILED`, `UPDATE_ROLLBACK`,
+`UPDATE_ROLLBACK_FAILED`.
+
+#### Installer execution
+
+The server resolves an {@code InstallerExecutor} at startup:
+
+- `installer.mode=test` sysprop / `UPDATER_INSTALLER_MODE=test` env var
+  → deterministic in-process executor used by CI and dev hosts.
+- Non-Windows OS → same deterministic executor (the docker image never
+  shells out to `msiexec`).
+- Otherwise → `msiexec.exe /i &lt;msi&gt; /qn /norestart /l*v &lt;log&gt;`
+  for apply, `msiexec.exe /x &lt;productCode&gt;` for uninstall.
+
+Installer logs are written to `${updater.dir}/logs/{package}-{action}-{ts}.log`.
 
 ## Error response format
 

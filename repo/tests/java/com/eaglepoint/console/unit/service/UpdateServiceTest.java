@@ -233,6 +233,9 @@ class UpdateServiceTest {
             copy.setErrorMessage(e.getErrorMessage());
             copy.setInitiatedBy(e.getInitiatedBy());
             copy.setNotes(e.getNotes());
+            copy.setExitCode(e.getExitCode());
+            copy.setLogPath(e.getLogPath());
+            copy.setInstallerType(e.getInstallerType());
             rows.add(copy);
             return id;
         }
