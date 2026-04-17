@@ -165,14 +165,77 @@ public class PickupPointController {
         if (tfFilter != null) tfFilter.requestFocus();
     }
 
-    /** Ctrl+N handler: open the "New pickup point" dialog. */
+    /**
+     * Ctrl+N handler: open the "New pickup point" dialog.
+     *
+     * <p>Posts to {@code POST /api/pickup-points} with community, address,
+     * ZIP, street range, hours and capacity.  The server enforces the
+     * one-active-pickup-point-per-community invariant so duplicate creates
+     * surface as 409 CONFLICT through the error dialog below.</p>
+     */
     public void openNewPickupPoint() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("New Pickup Point");
-        alert.setHeaderText("Create a pickup point");
-        alert.setContentText(
-            "Pickup points are created per community. Use the "
-                + "Admin > Pickup Points screen or POST /api/pickup-points to add one.");
-        alert.show();
+        Dialog<Map<String, Object>> dialog = new Dialog<>();
+        dialog.setTitle("New Pickup Point");
+        dialog.setHeaderText("Create a pickup point");
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        TextField tfCommunityId = new TextField();
+        tfCommunityId.setPromptText("Community ID");
+        TextField tfAddress = new TextField();
+        tfAddress.setPromptText("Street address");
+        TextField tfZip = new TextField();
+        tfZip.setPromptText("ZIP (12345 or 12345-6789)");
+        TextField tfRangeStart = new TextField();
+        tfRangeStart.setPromptText("Street range start (e.g. 100)");
+        TextField tfRangeEnd = new TextField();
+        tfRangeEnd.setPromptText("Street range end (e.g. 199)");
+        TextField tfCapacity = new TextField();
+        tfCapacity.setPromptText("Capacity");
+        TextField tfHours = new TextField();
+        tfHours.setText("{\"mon-fri\":\"07:00-19:00\"}");
+
+        javafx.scene.layout.VBox vbox = new javafx.scene.layout.VBox(8,
+            new Label("Community ID:"), tfCommunityId,
+            new Label("Address:"), tfAddress,
+            new Label("ZIP:"), tfZip,
+            new Label("Street range:"), tfRangeStart, tfRangeEnd,
+            new Label("Capacity:"), tfCapacity,
+            new Label("Hours JSON:"), tfHours);
+        vbox.setStyle("-fx-padding: 12;");
+        dialog.getDialogPane().setContent(vbox);
+
+        dialog.setResultConverter(btn -> btn == ButtonType.OK ? Map.of(
+            "communityId", tfCommunityId.getText().trim(),
+            "address", tfAddress.getText().trim(),
+            "zipCode", tfZip.getText().trim(),
+            "streetRangeStart", tfRangeStart.getText().trim(),
+            "streetRangeEnd", tfRangeEnd.getText().trim(),
+            "capacity", tfCapacity.getText().trim(),
+            "hoursJson", tfHours.getText().trim()
+        ) : null);
+
+        dialog.showAndWait().ifPresent(body -> new Thread(() -> {
+            try {
+                long communityId = Long.parseLong((String) body.get("communityId"));
+                int capacity = Integer.parseInt((String) body.get("capacity"));
+                ApiClient.getInstance().post("/api/pickup-points", Map.of(
+                    "communityId", communityId,
+                    "address", body.get("address"),
+                    "zipCode", body.get("zipCode"),
+                    "streetRangeStart", body.get("streetRangeStart"),
+                    "streetRangeEnd", body.get("streetRangeEnd"),
+                    "capacity", capacity,
+                    "hoursJson", body.get("hoursJson")
+                ));
+                Platform.runLater(this::loadData);
+            } catch (Exception e) {
+                log.error("Failed to create pickup point", e);
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.ERROR,
+                        "Create failed: " + e.getMessage(), ButtonType.OK);
+                    alert.showAndWait();
+                });
+            }
+        }).start());
     }
 }

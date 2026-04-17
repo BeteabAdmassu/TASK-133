@@ -179,15 +179,119 @@ public class BedBoardController {
         if (tfFilter != null) tfFilter.requestFocus();
     }
 
-    /** Ctrl+N handler: bed creation happens via admin tools; surface that clearly. */
+    /**
+     * Ctrl+N handler: open the "new bed" creation dialog.  Posts to
+     * {@code POST /api/beds} with {@code roomId} + {@code bedLabel}; the
+     * bed defaults to {@code AVAILABLE} state per the bed state machine.
+     */
     public void openNewBed() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("New Bed");
-        alert.setHeaderText("Create a new bed record");
-        alert.setContentText(
-            "Beds are created under a specific room. Use the Admin > Beds screen "
-                + "or POST /api/beds to add a new bed to the selected room.");
-        alert.show();
+        Dialog<Map<String, Object>> dialog = new Dialog<>();
+        dialog.setTitle("New Bed");
+        dialog.setHeaderText("Create a new bed record");
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        TextField tfRoomId = new TextField();
+        tfRoomId.setPromptText("Room ID");
+        TextField tfLabel = new TextField();
+        tfLabel.setPromptText("Bed label (e.g. 101A)");
+
+        VBox vbox = new VBox(8,
+            new Label("Room ID:"), tfRoomId,
+            new Label("Bed Label:"), tfLabel);
+        vbox.setStyle("-fx-padding: 12;");
+        dialog.getDialogPane().setContent(vbox);
+
+        dialog.setResultConverter(btn -> btn == ButtonType.OK ? Map.of(
+            "roomId", tfRoomId.getText().trim(),
+            "bedLabel", tfLabel.getText().trim()
+        ) : null);
+
+        dialog.showAndWait().ifPresent(body -> new Thread(() -> {
+            try {
+                long roomId = Long.parseLong((String) body.get("roomId"));
+                String label = (String) body.get("bedLabel");
+                if (label.isEmpty()) throw new IllegalArgumentException("bedLabel required");
+                ApiClient.getInstance().post("/api/beds",
+                    Map.of("roomId", roomId, "bedLabel", label));
+                Platform.runLater(this::loadBeds);
+            } catch (Exception e) {
+                log.error("Failed to create bed", e);
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.ERROR,
+                        "Failed: " + e.getMessage(), ButtonType.OK);
+                    alert.showAndWait();
+                });
+            }
+        }).start());
+    }
+
+    /**
+     * "Transfer Resident" workflow invoked from the bed context menu.
+     *
+     * <p>A transfer is two coupled state transitions the state machine
+     * already validates:
+     * <ol>
+     *   <li>Source bed {@code OCCUPIED → AVAILABLE} (checkout)</li>
+     *   <li>Destination bed {@code AVAILABLE → OCCUPIED} with the same
+     *       {@code residentId} and a reason prefixed with {@code TRANSFER:}
+     *       so the audit trail is traceable.</li>
+     * </ol>
+     */
+    public void showTransferDialog(Bed source) {
+        if (!"OCCUPIED".equals(source.getState())) {
+            Alert info = new Alert(Alert.AlertType.INFORMATION,
+                "Only OCCUPIED beds can be transferred.", ButtonType.OK);
+            info.showAndWait();
+            return;
+        }
+        Dialog<Map<String, Object>> dialog = new Dialog<>();
+        dialog.setTitle("Transfer Resident from bed #" + source.getId());
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        TextField tfDest = new TextField();
+        tfDest.setPromptText("Destination bed ID (must be AVAILABLE)");
+        TextField tfResident = new TextField();
+        tfResident.setPromptText("Resident ID");
+        TextField tfReason = new TextField();
+        tfReason.setPromptText("Transfer reason");
+
+        VBox vbox = new VBox(8,
+            new Label("Destination Bed ID:"), tfDest,
+            new Label("Resident ID:"), tfResident,
+            new Label("Reason:"), tfReason);
+        vbox.setStyle("-fx-padding: 12;");
+        dialog.getDialogPane().setContent(vbox);
+
+        dialog.setResultConverter(btn -> btn == ButtonType.OK ? Map.of(
+            "destId", tfDest.getText().trim(),
+            "residentId", tfResident.getText().trim(),
+            "reason", tfReason.getText().trim()
+        ) : null);
+
+        dialog.showAndWait().ifPresent(body -> new Thread(() -> {
+            try {
+                long destId = Long.parseLong((String) body.get("destId"));
+                String reason = "TRANSFER: " + body.getOrDefault("reason", "");
+                // 1. Checkout source.
+                ApiClient.getInstance().post("/api/beds/" + source.getId() + "/transition",
+                    Map.of("toState", "AVAILABLE", "reason", reason));
+                // 2. Occupy destination with the same resident id.
+                ApiClient.getInstance().post("/api/beds/" + destId + "/transition",
+                    Map.of(
+                        "toState", "OCCUPIED",
+                        "residentId", body.get("residentId"),
+                        "reason", reason
+                    ));
+                Platform.runLater(this::loadBeds);
+            } catch (Exception e) {
+                log.error("Failed to transfer bed", e);
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.ERROR,
+                        "Transfer failed: " + e.getMessage(), ButtonType.OK);
+                    alert.showAndWait();
+                });
+            }
+        }).start());
     }
 
     @FXML private void onRefresh() { loadBeds(); }

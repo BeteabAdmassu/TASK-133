@@ -45,6 +45,7 @@ public class ApiServer {
         var scheduledJobRepo = new ScheduledJobRepository(ds);
         var auditRepo = new AuditTrailRepository(ds);
         var systemLogRepo = new SystemLogRepository(ds);
+        var updateHistoryRepo = new com.eaglepoint.console.repository.UpdateHistoryRepository(ds);
 
         // Services
         var auditService = new AuditService(auditRepo);
@@ -71,6 +72,10 @@ public class ApiServer {
             bedRepo, bedBuildingRepo, bedRoomRepo,
             userRepo, kpiRepo, geozoneRepo);
         var consistencyService = new ConsistencyService(ds);
+        var updateVerifier = com.eaglepoint.console.security.UpdateSignatureVerifier.load();
+        var updateService = new UpdateService(
+            updateVerifier, updateHistoryRepo, auditService, notificationService);
+        var scheduledJobService = new ScheduledJobService(scheduledJobRepo, auditService);
 
         // Re-encrypt any plaintext markers left in the V2 seed so no row in
         // users.staff_id_encrypted is stored as plaintext at runtime.
@@ -118,7 +123,8 @@ public class ApiServer {
         RouteImportRoutes.register(app, routeImportService);
         KpiRoutes.register(app, kpiService);
         ExportRoutes.register(app, exportService);
-        SystemRoutes.register(app, auditRepo, systemLogRepo, scheduledJobRepo, jobScheduler);
+        UpdateRoutes.register(app, updateService);
+        SystemRoutes.register(app, auditRepo, systemLogRepo, scheduledJobRepo, jobScheduler, scheduledJobService);
 
         String bindHost = System.getProperty("api.bind", System.getenv().getOrDefault("API_BIND", "127.0.0.1"));
         app.start(bindHost, port);

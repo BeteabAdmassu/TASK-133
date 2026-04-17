@@ -100,6 +100,28 @@ public class JobScheduler {
         minuteExecutor.scheduleAtFixedRate(this::checkExpiredPauses, 60, 60, TimeUnit.SECONDS);
     }
 
+    /**
+     * Public, idempotent registration / replacement for a job config.
+     * Callers (ScheduledJobService) use this after CRUD mutations so the
+     * Quartz trigger schedule reflects the latest config without a restart.
+     */
+    public synchronized void registerOrReplace(ScheduledJobConfig config) throws Exception {
+        if (quartzScheduler == null) return;
+        unregister(config);
+        if ("ACTIVE".equals(config.getStatus())) {
+            registerJob(config);
+        }
+    }
+
+    public synchronized void unregister(ScheduledJobConfig config) throws Exception {
+        if (quartzScheduler == null || config == null) return;
+        String key = config.getJobType() + "-" + config.getId();
+        JobKey jk = JobKey.jobKey(key);
+        if (quartzScheduler.checkExists(jk)) {
+            quartzScheduler.deleteJob(jk);
+        }
+    }
+
     private void registerJob(ScheduledJobConfig config) {
         try {
             Class<? extends Job> jobClass = switch (config.getJobType()) {

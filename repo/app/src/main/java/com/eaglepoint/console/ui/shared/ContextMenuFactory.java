@@ -16,8 +16,15 @@ public class ContextMenuFactory {
         ContextMenu menu = new ContextMenu();
         MenuItem transition = new MenuItem("Change State...");
         transition.setOnAction(e -> controller.showTransitionDialog(bed));
+        // Semantic shortcut: prompt taxonomy calls it "bed transfer" — we
+        // surface it explicitly so operators can invoke the transfer flow
+        // without navigating through the Change State dialog.  Only makes
+        // sense on an OCCUPIED bed.
+        MenuItem transfer = new MenuItem("Transfer Resident...");
+        transfer.setOnAction(e -> controller.showTransferDialog(bed));
+        transfer.setDisable(!"OCCUPIED".equals(bed.getState()));
         MenuItem auditItem = buildAuditTrailItem("BED", bed.getId());
-        menu.getItems().addAll(transition, new SeparatorMenuItem(), auditItem);
+        menu.getItems().addAll(transition, transfer, new SeparatorMenuItem(), auditItem);
         return menu;
     }
 

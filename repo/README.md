@@ -288,7 +288,8 @@ Key endpoint groups:
 | `/api/kpis/*`, `/api/kpi-scores/*` | KPI definitions and score recording | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER` |
 | `/api/exports/*` | Async export jobs (Excel/PDF/CSV) | any authenticated **except** `AUDITOR` |
 | `/api/geozones/*` | Geographic zone management | read: any auth; write: `SYSTEM_ADMIN`, `OPS_MANAGER`; delete: `SYSTEM_ADMIN` |
-| `/api/jobs/*` | Scheduled job list/pause/resume | `SYSTEM_ADMIN` |
+| `/api/jobs/*` | Scheduled job CRUD + pause/resume | `SYSTEM_ADMIN` |
+| `/api/updates/*` | Offline signed update lifecycle (list, verify, apply, rollback, history) | `SYSTEM_ADMIN` (history visible to `AUDITOR` too) |
 | `/api/audit-trail` | Audit trail | `SYSTEM_ADMIN`, `AUDITOR` |
 | `/api/logs` | System logs | `SYSTEM_ADMIN`, `AUDITOR` |
 
@@ -393,3 +394,139 @@ Points.
   archived monthly.
 - **Encryption**: AES-256-GCM for `staffId`, `residentId`, `address` fields at
   rest; plaintext returned only to `SYSTEM_ADMIN`.
+
+---
+
+## Offline Update Packages (signed .msi workflow)
+
+The prompt requires offline package-based updates with signed installer
+and one-click rollback.  The on-disk layout mirrors a typical
+`C:\ProgramData\EaglePoint\updater\` folder and lives alongside the
+SQLite database:
+
+```
+${DB_PATH parent}/updater/
+├── incoming/                       ← operators drop signed packages here
+│   └── eaglepoint-1.2.0/
+│       ├── manifest.json           ← version + payloadFilename + payloadSha256
+│       ├── manifest.sig            ← detached Ed25519 signature over manifest.json
+│       └── payload.zip             ← the actual installer (referenced in manifest)
+├── installed/                      ← payload of currently running version
+└── backups/                        ← previous payloads, used on rollback
+```
+
+### Manifest schema (`manifest.json`)
+
+```json
+{
+  "version": "1.2.0",
+  "payloadFilename": "payload.zip",
+  "payloadSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "payloadSize": 12345678,
+  "signingKeyId": "eaglepoint-release-2026",
+  "releaseNotes": "Bed-board paging fix, route-import retry logic"
+}
+```
+
+### Signature trust material
+
+- Detached signature: raw Ed25519 bytes in `manifest.sig`.
+- Trust key: base64 X.509 SPKI of the release team's Ed25519 public key.
+- Loaded (first match wins) from:
+  1. `UPDATER_PUBLIC_KEY` env var
+  2. `-Dupdater.public.key=...` JVM property
+  3. `UPDATER_PUBLIC_KEY_FILE` env var (path to PEM or base64 file)
+  4. `data/updater/trust.pem.pub` next to the SQLite database
+- If no trust key is configured, every verify call returns
+  `signatureStatus=UNTRUSTED` and `apply` is refused.
+
+### REST surface
+
+| Method | Path | Description |
+|---|---|---|
+| `GET`  | `/api/updates/packages` | List parsed package directories under `incoming/` |
+| `POST` | `/api/updates/packages/{name}/verify` | Re-check signature + payload SHA-256 (no side effects other than an audit row) |
+| `POST` | `/api/updates/packages/{name}/apply` | Verify → move current `installed/` → `backups/` → promote package → record `INSTALLED` |
+| `POST` | `/api/updates/rollback` | Restore the most recent prior installed payload; records `ROLLED_BACK` |
+| `GET`  | `/api/updates/history` | Recent history rows (SYSTEM_ADMIN + AUDITOR) |
+| `GET`  | `/api/updates/current`  | Current installed row or `null` |
+
+All routes are gated by `SYSTEM_ADMIN`.  Every state change writes a row
+to `update_history` (`V3__update_history.sql`) **and** emits an audit
+event via `AuditService` (`entityType=UpdatePackage`, actions
+`UPDATE_APPLIED`, `UPDATE_ROLLBACK`, `UPDATE_REJECTED`, `UPDATE_FAILED`).
+
+### Rollback semantics
+
+`POST /api/updates/rollback` looks up the latest successful
+`INSTALLED` row, then walks backwards for the prior `INSTALLED` row.
+The file-system step moves the current payload aside (into `backups/`)
+and moves the prior backup into `installed/` atomically.  If no prior
+version is on record the endpoint returns **409 CONFLICT**.
+
+---
+
+## Scheduled Job Management
+
+`/api/jobs` exposes the full CRUD lifecycle for scheduled jobs. All
+routes require `SYSTEM_ADMIN`.  Invalid cron strings and invalid
+`REPORT` config are rejected server-side with a structured 400.
+
+| Method | Path | Body |
+|---|---|---|
+| `GET`  | `/api/jobs` | — |
+| `GET`  | `/api/jobs/{id}` | — |
+| `POST` | `/api/jobs` | `{ jobType, cronExpression, timeoutSeconds, status?, configJson? }` |
+| `PUT`  | `/api/jobs/{id}` | partial update (cron / timeout / status / configJson) |
+| `DELETE` | `/api/jobs/{id}` | — |
+| `POST` | `/api/jobs/{id}/pause`, `/resume` | — |
+
+Supported `jobType` values: `BACKUP`, `ARCHIVE`, `CONSISTENCY_CHECK`,
+`REPORT`.  `cronExpression` is validated with Quartz's
+`CronExpression.isValidExpression` (7-field Quartz syntax).
+
+### REPORT `configJson` schema
+
+```json
+{
+  "entityType": "COMMUNITIES",          // required; one of the export entity types
+  "format":     "EXCEL",                // optional; EXCEL / PDF / CSV, default EXCEL
+  "destinationPath": "/var/reports",    // optional; default = backup dir
+  "filtersJson":     "{...}"            // optional
+}
+```
+
+When the cron fires, `ScheduledReportJob` calls
+`ExportService.createExportJob(...)` so the output goes through the same
+crash-safe `.part` → atomic-rename → SHA-256-sidecar pipeline as ad-hoc
+operator exports.
+
+---
+
+## Keyboard shortcut matrix
+
+The prompt specifies Ctrl+F (search), Ctrl+N (new record), Ctrl+E
+(export), Ctrl+L (open logs).  The behaviour per window is:
+
+| Window | Ctrl+F | Ctrl+N | Ctrl+E | Ctrl+L |
+|---|---|---|---|---|
+| Main shell | Focus KPI tile | Open Reports | Open Reports | Log viewer |
+| Bed Board | Focus filter | **New Bed dialog** (posts `/api/beds`) | Reports dialog | Log viewer |
+| Pickup Points | Focus filter | **New Pickup Point dialog** (posts `/api/pickup-points`) | Export dialog | Log viewer |
+| KPI Reviews | Focus filter | **New KPI Score dialog** | Export dialog | Log viewer |
+| Reports | — (not bound) | Generate report | Generate report | Log viewer |
+| Evaluation | Informational prompt (no list) | Informational prompt | Reports dialog | Log viewer |
+
+Unbound shortcuts open a clear "not available here" dialog rather than
+silently doing nothing, so operators can never press into a no-op.
+
+### Context-menu actions
+
+- **Bed Board** rows expose `Change State…`, `Transfer Resident…` (only
+  enabled on an `OCCUPIED` bed — the transfer flow runs two coupled
+  transitions, `OCCUPIED→AVAILABLE` on source and `AVAILABLE→OCCUPIED`
+  on destination with a `TRANSFER:` audit tag), and `View Audit Trail`.
+- **Pickup Points** rows expose `Pause Service…`, `Resume Service`
+  (gated on status), and `View Audit Trail`.
+- **Scorecards** rows expose `Submit`, `Flag Conflict…`, and
+  `View Audit Trail`.

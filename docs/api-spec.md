@@ -147,19 +147,68 @@ ever ships.
 
 ### System / scheduled jobs
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/health` | uptime, db status, version |
-| GET | `/api/audit-trail` | SYSTEM_ADMIN or AUDITOR |
-| GET | `/api/logs` | SYSTEM_ADMIN or AUDITOR |
-| GET | `/api/jobs` | SYSTEM_ADMIN — lists registered scheduled jobs (BACKUP, ARCHIVE, CONSISTENCY_CHECK, REPORT) |
-| POST | `/api/jobs/{id}/pause`, `/resume` | SYSTEM_ADMIN |
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/health` | none | uptime, db status, version |
+| GET | `/api/audit-trail` | SYSTEM_ADMIN, AUDITOR | paginated |
+| GET | `/api/logs` | SYSTEM_ADMIN, AUDITOR | paginated |
+| GET | `/api/jobs` | SYSTEM_ADMIN | list scheduled jobs |
+| GET | `/api/jobs/{id}` | SYSTEM_ADMIN | fetch one |
+| POST | `/api/jobs` | SYSTEM_ADMIN | create — body below |
+| PUT | `/api/jobs/{id}` | SYSTEM_ADMIN | partial update (cron/timeout/status/configJson) |
+| DELETE | `/api/jobs/{id}` | SYSTEM_ADMIN | unregisters from Quartz + removes row |
+| POST | `/api/jobs/{id}/pause`, `/resume` | SYSTEM_ADMIN | pause/resume trigger |
 
-`REPORT` scheduled jobs execute through the same `ExportService`
-pipeline as ad-hoc exports.  Each `scheduled_jobs.config_json` for a
-`REPORT` must at minimum specify `entityType`; optional keys are
-`format` (`EXCEL` / `PDF` / `CSV`), `destinationPath`, and
-`filtersJson`.
+Create body:
+
+```json
+{
+  "jobType":         "REPORT",                  // BACKUP | ARCHIVE | CONSISTENCY_CHECK | REPORT
+  "cronExpression":  "0 5 3 * * ?",             // Quartz 7-field cron, validated server-side
+  "timeoutSeconds":  600,                        // 0..86400
+  "status":          "ACTIVE",                  // ACTIVE | PAUSED, default ACTIVE
+  "configJson": {
+    "entityType":      "COMMUNITIES",           // REPORT: required; one of the export entity types
+    "format":          "EXCEL",                 // EXCEL | PDF | CSV, default EXCEL
+    "destinationPath": "/var/reports",          // optional
+    "filtersJson":     "{...}"                  // optional
+  }
+}
+```
+
+Validation errors (400 `VALIDATION_ERROR`) include
+`error.fields.cronExpression`, `error.fields.jobType`,
+`error.fields.status`, `error.fields.timeoutSeconds`,
+`error.fields.configJson`, and `error.fields["configJson.entityType"]` /
+`error.fields["configJson.format"]` when a REPORT's config is malformed.
+
+REPORT jobs execute through the same `ExportService` pipeline as ad-hoc
+exports, meaning atomic `.part` → rename, SHA-256 sidecar, and
+crash-safe resume.
+
+### Updates (offline signed packages + rollback)
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/updates/packages` | SYSTEM_ADMIN | enumerates `${updater.dir}/incoming/*` |
+| POST | `/api/updates/packages/{name}/verify` | SYSTEM_ADMIN | Ed25519 signature + payload SHA-256 check |
+| POST | `/api/updates/packages/{name}/apply` | SYSTEM_ADMIN | verify, move current payload to `backups/`, promote new package |
+| POST | `/api/updates/rollback` | SYSTEM_ADMIN | one-click rollback to previous installed payload |
+| GET | `/api/updates/history` | SYSTEM_ADMIN, AUDITOR | recent rows from `update_history` |
+| GET | `/api/updates/current` | SYSTEM_ADMIN, AUDITOR | currently-installed row or `null` |
+
+Trust material is loaded (first match wins) from:
+
+1. `UPDATER_PUBLIC_KEY` env var (base64 X.509 SPKI)
+2. System property `updater.public.key`
+3. `UPDATER_PUBLIC_KEY_FILE` env var / `updater.public.key.file`
+4. `data/updater/trust.pem.pub`
+
+If no key is loaded, every verify call returns
+`{"signatureStatus":"UNTRUSTED","valid":false}` and `apply` refuses to
+run.  Apply, rollback, and reject events write to
+`update_history` (see migration `V3__update_history.sql`) and emit
+audit events under `entityType=UpdatePackage`.
 
 ## Error response format
 

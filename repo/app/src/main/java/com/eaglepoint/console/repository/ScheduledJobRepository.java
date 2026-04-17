@@ -57,4 +57,27 @@ public class ScheduledJobRepository extends BaseRepository {
     public void resumeJob(long id) {
         execute("UPDATE scheduled_jobs SET status='ACTIVE', updated_at=datetime('now') WHERE id=?", id);
     }
+
+    public long insert(ScheduledJobConfig j) {
+        return insertAndGetId(
+            "INSERT INTO scheduled_jobs (job_type, cron_expression, timeout_seconds, status, config_json) " +
+            "VALUES (?,?,?,?,?)",
+            j.getJobType(), j.getCronExpression(),
+            j.getTimeoutSeconds() > 0 ? j.getTimeoutSeconds() : 3600,
+            j.getStatus() != null ? j.getStatus() : "ACTIVE",
+            j.getConfigJson()
+        );
+    }
+
+    public void update(ScheduledJobConfig j) {
+        execute(
+            "UPDATE scheduled_jobs SET cron_expression=?, timeout_seconds=?, status=?, config_json=?, updated_at=datetime('now') WHERE id=?",
+            j.getCronExpression(), j.getTimeoutSeconds(), j.getStatus(),
+            j.getConfigJson(), j.getId()
+        );
+    }
+
+    public void delete(long id) {
+        execute("DELETE FROM scheduled_jobs WHERE id = ?", id);
+    }
 }
