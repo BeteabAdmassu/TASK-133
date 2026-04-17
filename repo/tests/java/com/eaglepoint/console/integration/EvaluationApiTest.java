@@ -134,6 +134,29 @@ class EvaluationApiTest extends BaseIntegrationTest {
     }
 
     @Test
+    void listTemplatesIncludesCreatedTemplate() {
+        int cycleId = createCycle();
+        int t1 = createTemplate(cycleId, "SELF");
+        int t2 = createTemplate(cycleId, "PEER");
+
+        withAdmin()
+        .when()
+            .get("/api/cycles/" + cycleId + "/templates")
+        .then()
+            .statusCode(200)
+            .body("templates", notNullValue())
+            .body("templates.size()", greaterThanOrEqualTo(2))
+            .body("templates.find { it.id == " + t1 + " }.type", equalTo("SELF"))
+            .body("templates.find { it.id == " + t2 + " }.type", equalTo("PEER"));
+    }
+
+    @Test
+    void listTemplatesRequiresAuth() {
+        int cycleId = createCycle();
+        anonymous().when().get("/api/cycles/" + cycleId + "/templates").then().statusCode(401);
+    }
+
+    @Test
     void addMetricWithWeightOverflowIsRejected() {
         int cycleId = createCycle();
         int templateId = createTemplate(cycleId, "SELF");
@@ -325,6 +348,113 @@ class EvaluationApiTest extends BaseIntegrationTest {
         .then()
             .statusCode(200)
             .body("data", notNullValue());
+    }
+
+    @Test
+    void getReviewByIdReturnsReview() {
+        int scId = fullySubmittedScorecard("ops_manager");
+        int reviewId = withAdmin()
+            .body(Map.of("scorecardId", scId))
+        .when()
+            .post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        withAdmin()
+        .when()
+            .get("/api/reviews/" + reviewId)
+        .then()
+            .statusCode(200)
+            .body("review.id", equalTo(reviewId))
+            .body("review.scorecardId", equalTo(scId))
+            .body("review.status", notNullValue());
+    }
+
+    @Test
+    void getReviewByIdReturns404WhenMissing() {
+        withAdmin()
+        .when()
+            .get("/api/reviews/99999999")
+        .then()
+            .statusCode(404)
+            .body("error.code", equalTo("NOT_FOUND"));
+    }
+
+    @Test
+    void flagConflictByAssignedReviewerSucceeds() {
+        // Reviewer creates the review — reviewerId becomes reviewer's user id.
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = asRole("REVIEWER")
+            .body(Map.of("scorecardId", scId))
+        .when()
+            .post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        String reason = "I have a prior professional relationship with the evaluatee";
+        asRole("REVIEWER")
+            .body(Map.of("reason", reason))
+        .when()
+            .post("/api/reviews/" + reviewId + "/flag-conflict")
+        .then()
+            .statusCode(200)
+            .body("review.id", equalTo(reviewId))
+            .body("review.status", equalTo("RECUSED"))
+            .body("review.conflictFlagged", equalTo(true))
+            .body("review.recusalReason", equalTo(reason))
+            .body("review.recusedAt", notNullValue());
+    }
+
+    @Test
+    void flagConflictByNonAssignedReviewerIsForbidden() {
+        int scId = fullySubmittedScorecard("auditor");
+        // Admin creates the review — reviewerId = admin's user id.
+        int reviewId = withAdmin()
+            .body(Map.of("scorecardId", scId))
+        .when()
+            .post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        // Reviewer is NOT the assigned reviewer here — service must reject.
+        asRole("REVIEWER")
+            .body(Map.of("reason", "I have a conflict even though I'm not assigned"))
+        .when()
+            .post("/api/reviews/" + reviewId + "/flag-conflict")
+        .then()
+            .statusCode(403)
+            .body("error.code", equalTo("FORBIDDEN"));
+    }
+
+    @Test
+    void flagConflictRequiresReason() {
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = asRole("REVIEWER")
+            .body(Map.of("scorecardId", scId))
+        .when()
+            .post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        asRole("REVIEWER")
+            .body(Map.of("reason", ""))
+        .when()
+            .post("/api/reviews/" + reviewId + "/flag-conflict")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void flagConflictRequiresElevatedRole() {
+        int scId = fullySubmittedScorecard("auditor");
+        int reviewId = withAdmin()
+            .body(Map.of("scorecardId", scId))
+        .when()
+            .post("/api/reviews").then().statusCode(201)
+            .extract().path("review.id");
+
+        asRole("AUDITOR")
+            .body(Map.of("reason", "Auditor can't flag"))
+        .when()
+            .post("/api/reviews/" + reviewId + "/flag-conflict")
+        .then()
+            .statusCode(403);
     }
 
     // ─── Appeals ─────────────────────────────────────────────────────────────

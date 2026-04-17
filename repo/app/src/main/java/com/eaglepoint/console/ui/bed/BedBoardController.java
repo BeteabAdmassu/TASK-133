@@ -64,13 +64,10 @@ public class BedBoardController {
     private void renderGrid() {
         bedGrid.getChildren().clear();
         String stateFilter = cbStateFilter.getValue();
-        String textFilter = tfFilter.getText() != null ? tfFilter.getText().toLowerCase() : "";
+        String textFilter = tfFilter.getText();
         int count = 0;
         for (Map<String, Object> bed : allBeds) {
-            String state = String.valueOf(bed.getOrDefault("state", "AVAILABLE"));
-            String label = String.valueOf(bed.getOrDefault("bedLabel", ""));
-            if (stateFilter != null && !stateFilter.isEmpty() && !stateFilter.equals(state)) continue;
-            if (!textFilter.isEmpty() && !label.toLowerCase().contains(textFilter)) continue;
+            if (!BedDisplayFilter.matches(bed, stateFilter, textFilter)) continue;
             bedGrid.getChildren().add(createBedCell(bed));
             count++;
         }

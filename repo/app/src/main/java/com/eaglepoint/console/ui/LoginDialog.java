@@ -76,8 +76,9 @@ public class LoginDialog {
         btnLogin.setOnAction(e -> {
             String username = tfUsername.getText().trim();
             String password = pfPassword.getText();
-            if (username.isEmpty() || password.isEmpty()) {
-                lblError.setText("Please enter username and password.");
+            LoginInputValidator.Result validation = LoginInputValidator.validate(username, password);
+            if (!validation.isValid()) {
+                lblError.setText(validation.message());
                 lblError.setVisible(true);
                 return;
             }
