@@ -61,6 +61,34 @@ class RouteDeviationApiTest extends BaseIntegrationTest {
     }
 
     @Test
+    void expectedVsActualDeviationFiresWhenActualStraysFromPlanned() throws Exception {
+        // CP1 supplies its own expected_lat/expected_lon (planned route point)
+        // that is ~1.1 mi away from the actual coords recorded — deviation
+        // should be computed planned-vs-actual and trigger the alert even
+        // though CP1 has no predecessor checkpoint.
+        String csv =
+            "checkpoint_name,expected_at,actual_at,lat,lon,expected_lat,expected_lon\n" +
+            "CP1,2024-01-01T10:00:00Z,2024-01-01T10:00:00Z,37.7949,-122.4394,37.7749,-122.4194\n";
+
+        int importId = uploadCsv(csv);
+        waitForImportCompleted(importId);
+
+        Map<String, Object> checkpoints = withAdmin().when()
+            .get("/api/route-imports/" + importId + "/checkpoints")
+        .then().statusCode(200).extract().as(Map.class);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) checkpoints.get("data");
+        Map<String, Object> cp1 = findByName(rows, "CP1");
+        if (cp1 == null) throw new AssertionError("missing CP1: " + rows);
+        assertFlag(cp1, true);
+        double miles = ((Number) cp1.get("deviationMiles")).doubleValue();
+        if (miles <= 0.5) {
+            throw new AssertionError("Expected planned-vs-actual miles > 0.5 for CP1, got " + miles);
+        }
+    }
+
+    @Test
     void onTrackCheckpointsDoNotFireDeviationAlerts() throws Exception {
         int importId = uploadCsv(ON_TRACK_CSV);
         waitForImportCompleted(importId);

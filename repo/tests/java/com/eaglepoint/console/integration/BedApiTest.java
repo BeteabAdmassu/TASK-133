@@ -419,6 +419,74 @@ class BedApiTest extends BaseIntegrationTest {
             .body("bed.bedLabel", equalTo(newLabel));
     }
 
+    @Test
+    void listBedsByRoomIdFiltersCorrectly() {
+        // Create a second room in the same building with its own bed, then
+        // verify ?roomId=<primary> returns only the primary room's beds.
+        int otherRoomId = withAdmin()
+            .body(Map.of("buildingId", buildingId, "roomNumber", unique("R"), "floor", 2, "roomType", "STANDARD"))
+        .when().post("/api/rooms").then().statusCode(201)
+            .extract().path("room.id");
+
+        int bedInRoomA = withAdmin()
+            .body(Map.of("roomId", roomId, "bedLabel", shortUnique("A"), "bedType", "STANDARD"))
+        .when().post("/api/beds").then().statusCode(201)
+            .extract().path("bed.id");
+        int bedInRoomB = withAdmin()
+            .body(Map.of("roomId", otherRoomId, "bedLabel", shortUnique("B"), "bedType", "STANDARD"))
+        .when().post("/api/beds").then().statusCode(201)
+            .extract().path("bed.id");
+
+        withAdmin()
+        .when()
+            .get("/api/beds?roomId=" + roomId + "&pageSize=500")
+        .then()
+            .statusCode(200)
+            .body("data.every { it.roomId == " + roomId + " }", equalTo(true))
+            .body("data.find { it.id == " + bedInRoomA + " }.id", equalTo(bedInRoomA))
+            .body("data.find { it.id == " + bedInRoomB + " }", nullValue());
+    }
+
+    @Test
+    void listBedsByBuildingIdFiltersCorrectly() {
+        // Create a second building + room + bed to confirm the join excludes it.
+        int otherBuildingId = withAdmin()
+            .body(Map.of("name", unique("BldgB"), "address", "2 Other"))
+        .when().post("/api/bed-buildings").then().statusCode(201)
+            .extract().path("building.id");
+        int otherRoomId = withAdmin()
+            .body(Map.of("buildingId", otherBuildingId, "roomNumber", unique("R"), "floor", 1, "roomType", "STANDARD"))
+        .when().post("/api/rooms").then().statusCode(201)
+            .extract().path("room.id");
+        int bedInOther = withAdmin()
+            .body(Map.of("roomId", otherRoomId, "bedLabel", shortUnique("O"), "bedType", "STANDARD"))
+        .when().post("/api/beds").then().statusCode(201)
+            .extract().path("bed.id");
+
+        // Bed inside THIS class's setUp() building
+        int bedInPrimary = withAdmin()
+            .body(Map.of("roomId", roomId, "bedLabel", shortUnique("P"), "bedType", "STANDARD"))
+        .when().post("/api/beds").then().statusCode(201)
+            .extract().path("bed.id");
+
+        withAdmin()
+        .when()
+            .get("/api/beds?buildingId=" + buildingId + "&pageSize=500")
+        .then()
+            .statusCode(200)
+            .body("data.find { it.id == " + bedInPrimary + " }.id", equalTo(bedInPrimary))
+            .body("data.find { it.id == " + bedInOther + " }", nullValue());
+    }
+
+    @Test
+    void listBedsWithUnknownRoomIdReturns404() {
+        withAdmin()
+        .when()
+            .get("/api/beds?roomId=99999999")
+        .then()
+            .statusCode(404);
+    }
+
     /** Short unique that fits the bed_label 20-char column. */
     private static String shortUnique(String prefix) {
         String tail = Long.toHexString(System.nanoTime()); // up to 16 hex chars

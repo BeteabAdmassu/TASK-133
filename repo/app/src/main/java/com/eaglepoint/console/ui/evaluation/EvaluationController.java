@@ -190,10 +190,13 @@ public class EvaluationController {
     }
 
     @FXML private void onActivateCycle() {
+        // Cycle lifecycle transitions are explicit endpoints — see
+        // EvaluationRoutes.java for the contract.  Posting an empty body is
+        // intentional; the server derives the new status from the URL.
         Map<String, Object> sel = tableCycles.getSelectionModel().getSelectedItem();
         if (sel != null) {
             long id = ((Number) sel.get("id")).longValue();
-            put("/api/cycles/" + id, Map.of("status", "ACTIVE"));
+            post("/api/cycles/" + id + "/activate", Map.of());
         }
     }
 
@@ -201,7 +204,7 @@ public class EvaluationController {
         Map<String, Object> sel = tableCycles.getSelectionModel().getSelectedItem();
         if (sel != null) {
             long id = ((Number) sel.get("id")).longValue();
-            put("/api/cycles/" + id, Map.of("status", "CLOSED"));
+            post("/api/cycles/" + id + "/close", Map.of());
         }
     }
 

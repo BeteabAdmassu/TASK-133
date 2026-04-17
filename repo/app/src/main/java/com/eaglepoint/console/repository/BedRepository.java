@@ -106,6 +106,22 @@ public class BedRepository extends BaseRepository {
             this::mapBed, roomId);
     }
 
+    /** Paginated beds scoped to a single room. */
+    public PagedResult<Bed> findBedsByRoomPaged(long roomId, int page, int pageSize) {
+        return paginate(
+            "SELECT * FROM beds WHERE room_id = ? ORDER BY id",
+            "SELECT COUNT(*) FROM beds WHERE room_id = ?",
+            this::mapBed, page, pageSize, roomId);
+    }
+
+    /** Paginated beds across all rooms of a given building (via bed_rooms join). */
+    public PagedResult<Bed> findBedsByBuildingPaged(long buildingId, int page, int pageSize) {
+        return paginate(
+            "SELECT b.* FROM beds b JOIN bed_rooms r ON b.room_id = r.id WHERE r.building_id = ? ORDER BY b.id",
+            "SELECT COUNT(*) FROM beds b JOIN bed_rooms r ON b.room_id = r.id WHERE r.building_id = ?",
+            this::mapBed, page, pageSize, buildingId);
+    }
+
     public long insertBed(Bed b) {
         return insertAndGetId(
             "INSERT INTO beds (room_id, bed_label, state) VALUES (?,?,?)",

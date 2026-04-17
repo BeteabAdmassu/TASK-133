@@ -24,10 +24,23 @@ public class AppConfig {
         getInstance();
     }
 
-    private String resolve(String envKey, String sysPropKey, String propsKey, String defaultValue) {
-        String v = System.getenv(envKey);
-        if (v != null && !v.isEmpty()) return v;
-        v = System.getProperty(sysPropKey);
+    /**
+     * Resolve a config value by checking (in order):
+     * <ol>
+     *   <li>Each of the supplied {@code envKeys} in {@link System#getenv} —
+     *       this accepts both the historical {@code APP_}-prefixed names and
+     *       the bare names documented in {@code docker-compose.yml} / README.</li>
+     *   <li>{@link System#getProperty} on {@code sysPropKey}.</li>
+     *   <li>{@code app.properties} under {@code propsKey}.</li>
+     *   <li>The supplied default.</li>
+     * </ol>
+     */
+    private String resolve(String[] envKeys, String sysPropKey, String propsKey, String defaultValue) {
+        for (String key : envKeys) {
+            String v = System.getenv(key);
+            if (v != null && !v.isEmpty()) return v;
+        }
+        String v = System.getProperty(sysPropKey);
         if (v != null && !v.isEmpty()) return v;
         v = props.getProperty(propsKey);
         if (v != null && !v.isEmpty()) return v;
@@ -35,19 +48,23 @@ public class AppConfig {
     }
 
     public int getApiPort() {
-        return Integer.parseInt(resolve("APP_API_PORT", "api.port", "api.port", "8080"));
+        return Integer.parseInt(resolve(new String[]{"API_PORT", "APP_API_PORT"},
+            "api.port", "api.port", "8080"));
     }
 
     public String getDbPath() {
-        return resolve("APP_DB_PATH", "db.path", "db.path", "data/console.db");
+        return resolve(new String[]{"DB_PATH", "APP_DB_PATH"},
+            "db.path", "db.path", "data/console.db");
     }
 
     public String getBackupDir() {
-        return resolve("APP_BACKUP_DIR", "backup.dir", "backup.dir", "data/backups");
+        return resolve(new String[]{"BACKUP_DIR", "APP_BACKUP_DIR"},
+            "backup.dir", "backup.dir", "data/backups");
     }
 
     public String getLogDir() {
-        return resolve("APP_LOG_DIR", "log.dir", "log.dir", "logs");
+        return resolve(new String[]{"LOG_DIR", "APP_LOG_DIR"},
+            "log.dir", "log.dir", "logs");
     }
 
     public String getVersion() {

@@ -1,5 +1,6 @@
 package com.eaglepoint.console.api.routes;
 
+import com.eaglepoint.console.api.QueryShaper;
 import com.eaglepoint.console.api.dto.PagedResponse;
 import com.eaglepoint.console.api.middleware.AuthMiddleware;
 import com.eaglepoint.console.service.ServiceAreaService;
@@ -14,7 +15,12 @@ public class ServiceAreaRoutes {
             AuthMiddleware.getCurrentUser(ctx);
             int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
             int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
-            ctx.json(PagedResponse.of(serviceAreaService.listServiceAreas(page, pageSize)));
+            var result = serviceAreaService.listServiceAreas(page, pageSize);
+            if (ctx.queryParam("sort") != null || ctx.queryParam("fields") != null) {
+                ctx.json(QueryShaper.shape(ctx, result));
+            } else {
+                ctx.json(PagedResponse.of(result));
+            }
         });
 
         app.post("/api/service-areas", ctx -> {

@@ -146,8 +146,16 @@ public class RouteImportService {
             }
             double lat = ((Number) latObj).doubleValue();
             double lon = ((Number) lonObj).doubleValue();
-            checkpoints.add(buildCheckpoint(importId, name, expectedAt, actualAt, lat, lon,
-                (String) row.get("notes")));
+            RouteCheckpoint cp = buildCheckpoint(importId, name, expectedAt, actualAt, lat, lon,
+                (String) row.get("notes"));
+            // Optional expected coordinates for planned-route deviation.
+            Object expLatObj = row.get("expected_lat");
+            Object expLonObj = row.get("expected_lon");
+            if (expLatObj instanceof Number && expLonObj instanceof Number) {
+                cp.setExpectedLatMasked(MaskingUtil.maskLat(((Number) expLatObj).doubleValue()));
+                cp.setExpectedLonMasked(MaskingUtil.maskLon(((Number) expLonObj).doubleValue()));
+            }
+            checkpoints.add(cp);
         }
         return checkpoints;
     }
@@ -181,7 +189,19 @@ public class RouteImportService {
         String actualAt = getCol(row, header, "actual_at");
         double lat = Double.parseDouble(getCol(row, header, "lat"));
         double lon = Double.parseDouble(getCol(row, header, "lon"));
-        return buildCheckpoint(importId, name, expectedAt, actualAt, lat, lon, null);
+        RouteCheckpoint cp = buildCheckpoint(importId, name, expectedAt, actualAt, lat, lon, null);
+        // Optional expected coordinates on the CSV row for planned-route deviation.
+        String expLatStr = getCol(row, header, "expected_lat");
+        String expLonStr = getCol(row, header, "expected_lon");
+        if (expLatStr != null && !expLatStr.isBlank() && expLonStr != null && !expLonStr.isBlank()) {
+            try {
+                cp.setExpectedLatMasked(MaskingUtil.maskLat(Double.parseDouble(expLatStr)));
+                cp.setExpectedLonMasked(MaskingUtil.maskLon(Double.parseDouble(expLonStr)));
+            } catch (NumberFormatException ignored) {
+                // Malformed expected columns silently fall back to previous-checkpoint deviation.
+            }
+        }
+        return cp;
     }
 
     private RouteCheckpoint buildCheckpoint(long importId, String name, String expectedAt,
@@ -231,24 +251,45 @@ public class RouteImportService {
 
     /**
      * Fill in {@code deviationMiles} and {@code isDeviationAlert} on each
-     * checkpoint in the sequence.  The first checkpoint has no predecessor,
-     * so its deviation is {@code 0.0}.  Any subsequent checkpoint more than
-     * {@link #DEVIATION_ALERT_MILES} from its predecessor is flagged and
-     * its status is promoted to {@code DEVIATED} (unless already {@code MISSED}).
+     * checkpoint.
+     *
+     * <p>Per-checkpoint rule:
+     * <ol>
+     *   <li>If the import supplied {@code expected_lat}/{@code expected_lon}
+     *       for the row, compute deviation as the great-circle distance between
+     *       the planned (expected) coordinates and the actual coordinates
+     *       recorded for that checkpoint (<em>planned-vs-actual</em>).</li>
+     *   <li>Otherwise fall back to the distance from the <em>previous</em>
+     *       checkpoint in the import sequence.  The first checkpoint in that
+     *       fallback path has no predecessor, so its deviation is {@code 0.0}.</li>
+     * </ol>
+     * Any checkpoint whose deviation exceeds
+     * {@link #DEVIATION_ALERT_MILES} (0.5 mi) is flagged and promoted to
+     * status {@code DEVIATED} (unless already {@code MISSED}).</p>
      */
     private void annotateDeviations(List<RouteCheckpoint> checkpoints) {
         RouteCheckpoint prev = null;
         for (RouteCheckpoint cp : checkpoints) {
             Double lat = cp.getLatMasked();
             Double lon = cp.getLonMasked();
-            if (prev == null || lat == null || lon == null
-                    || prev.getLatMasked() == null || prev.getLonMasked() == null) {
+            Double expLat = cp.getExpectedLatMasked();
+            Double expLon = cp.getExpectedLonMasked();
+
+            Double miles = null;
+            if (lat != null && lon != null && expLat != null && expLon != null) {
+                // Preferred: planned-vs-actual deviation.
+                miles = computeDeviationMiles(expLat, expLon, lat, lon);
+            } else if (prev != null && lat != null && lon != null
+                    && prev.getLatMasked() != null && prev.getLonMasked() != null) {
+                // Fallback: previous-checkpoint deviation.
+                miles = computeDeviationMiles(
+                    prev.getLatMasked(), prev.getLonMasked(), lat, lon);
+            }
+
+            if (miles == null) {
                 cp.setDeviationMiles(0.0);
                 cp.setDeviationAlert(false);
             } else {
-                double miles = computeDeviationMiles(
-                    prev.getLatMasked(), prev.getLonMasked(),
-                    lat, lon);
                 cp.setDeviationMiles(miles);
                 if (miles > DEVIATION_ALERT_MILES) {
                     cp.setDeviationAlert(true);

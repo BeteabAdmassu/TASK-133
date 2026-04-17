@@ -200,6 +200,12 @@ required**. Override them only when you need to (e.g., custom ports).
 | `LOG_DIR` | `/app/logs` | Log output directory |
 | `APP_TEST_ENC_KEY` | *(seeded in compose)* | Base64 AES-256 key used in headless mode |
 
+> `AppConfig` also accepts the historical `APP_`-prefixed aliases
+> (`APP_API_PORT`, `APP_DB_PATH`, `APP_BACKUP_DIR`, `APP_LOG_DIR`) for
+> backward-compatibility with older deployment scripts.  The bare names in
+> the table above are the **preferred** keys — matched by
+> `docker-compose.yml` out of the box.
+
 ---
 
 ## Database Migrations & Seed Data
@@ -210,6 +216,25 @@ Flyway runs automatically on startup. Two migrations are applied:
 - `V2__seed_admin_user.sql` — creates one seeded user per role (see below) plus
   default scheduled job configurations (`BACKUP`, `ARCHIVE`,
   `CONSISTENCY_CHECK`).
+
+### Seed encryption posture
+
+For readability, `V2__seed_admin_user.sql` writes short human markers
+(`SEED-ADMIN`, `SEED-OPS`, …) into the `users.staff_id_encrypted` column.
+On every boot `SeedEncryptionService` runs a **scan-and-rewrite** over that
+column:
+
+1. For each non-null value, attempt `EncryptionUtil.decrypt(...)`.
+2. If decryption succeeds, the value is already valid ciphertext — skip.
+3. If decryption fails, treat the value as plaintext and rewrite it with
+   `EncryptionUtil.encrypt(...)`.
+
+The operation is idempotent (a second boot is a no-op) and never leaves
+plaintext in the column at runtime.  The plaintext in the migration itself is
+safe because (a) the SQL file is developer-facing only, (b) the markers do
+not contain PII, and (c) the very first boot converts them into ciphertext
+bound to the deployment's AES-256 key (Windows DPAPI in production, the
+`APP_TEST_ENC_KEY` env var in headless/Docker mode).
 
 ---
 
@@ -280,6 +305,31 @@ standard pagination:
 
 Shaping is applied in-memory on the current paginated page (default 50, max
 500 rows) so it never loosens the documented pagination bounds.
+
+### Route-import deviation semantics
+
+`POST /api/route-imports` accepts CSV or JSON payloads.  Each checkpoint row
+carries required columns `checkpoint_name`, `expected_at`, `lat`, `lon` and
+optional `actual_at`, `notes`, `expected_lat`, `expected_lon`.
+
+The 0.5 mi deviation alert is computed per checkpoint with the following
+rule:
+
+1. **Preferred — planned vs. actual.**  When the row supplies both
+   `expected_lat` and `expected_lon`, the server computes the haversine
+   distance between the planned coordinates and the recorded actual
+   coordinates.  `deviation_miles` is set to that distance;
+   `is_deviation_alert` is set when the distance exceeds **0.5 mi**.
+2. **Fallback — consecutive checkpoints.**  When the row omits the expected
+   coordinates, the server compares the recorded actual coordinates against
+   the previous checkpoint in the import sequence.  The first checkpoint in
+   this fallback path has no predecessor and receives
+   `deviation_miles=0.0, is_deviation_alert=false`.
+
+In both cases, checkpoints whose status was already `MISSED` (no
+`actual_at`) retain that status; non-missed rows exceeding the threshold
+are promoted to `DEVIATED`.  An aggregated WARN notification is raised when
+any import finishes with one or more alerts.
 
 ### Exports
 

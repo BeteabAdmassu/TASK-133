@@ -187,7 +187,12 @@ public class BedService {
     public PagedResult<Bed> listBeds(Long roomId, Long buildingId, int page, int pageSize) {
         if (roomId != null) {
             bedRepo.findRoomById(roomId).orElseThrow(() -> new NotFoundException("BedRoom", roomId));
-            // Filter by room not natively paginated in query; use stateFilter=null
+            return bedRepo.findBedsByRoomPaged(roomId, page, pageSize);
+        }
+        if (buildingId != null) {
+            bedRepo.findBuildingById(buildingId)
+                .orElseThrow(() -> new NotFoundException("BedBuilding", buildingId));
+            return bedRepo.findBedsByBuildingPaged(buildingId, page, pageSize);
         }
         return bedRepo.findAllBeds(page, pageSize, null);
     }

@@ -8,6 +8,14 @@ public class RouteCheckpoint {
     private String actualAt;
     private Double latMasked;
     private Double lonMasked;
+    /**
+     * Optional expected coordinates from the import file (e.g. planned
+     * route). When present, deviation is computed against these instead of
+     * against the previous checkpoint.  Never persisted — transient during
+     * import processing only.
+     */
+    private Double expectedLatMasked;
+    private Double expectedLonMasked;
     private Double deviationMiles;
     private boolean isDeviationAlert;
     private boolean isMissedAlert;
@@ -28,6 +36,10 @@ public class RouteCheckpoint {
     public void setLatMasked(Double latMasked) { this.latMasked = latMasked; }
     public Double getLonMasked() { return lonMasked; }
     public void setLonMasked(Double lonMasked) { this.lonMasked = lonMasked; }
+    public Double getExpectedLatMasked() { return expectedLatMasked; }
+    public void setExpectedLatMasked(Double v) { this.expectedLatMasked = v; }
+    public Double getExpectedLonMasked() { return expectedLonMasked; }
+    public void setExpectedLonMasked(Double v) { this.expectedLonMasked = v; }
     public Double getDeviationMiles() { return deviationMiles; }
     public void setDeviationMiles(Double deviationMiles) { this.deviationMiles = deviationMiles; }
     public boolean isDeviationAlert() { return isDeviationAlert; }
