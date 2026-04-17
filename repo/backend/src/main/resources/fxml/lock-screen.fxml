@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<StackPane xmlns="http://javafx.com/javafx/21"
+           xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="com.eaglepoint.console.ui.LockScreenController"
+           styleClass="lock-screen-overlay"
+           prefWidth="400" prefHeight="300">
+
+    <VBox alignment="CENTER" spacing="16" maxWidth="320">
+        <padding>
+            <Insets top="40" right="40" bottom="40" left="40"/>
+        </padding>
+
+        <Label text="Session Locked" styleClass="lock-title"/>
+        <Label fx:id="lblUsername" text="" styleClass="lock-username"/>
+        <Label text="Enter your password to unlock" styleClass="lock-hint"/>
+
+        <PasswordField fx:id="pfPassword" promptText="Password"
+                       styleClass="lock-password-field"
+                       onAction="#onUnlock"/>
+
+        <Label fx:id="lblError" text="" styleClass="lock-error" visible="false"/>
+
+        <Button fx:id="btnUnlock" text="Unlock" onAction="#onUnlock"
+                defaultButton="true" styleClass="lock-unlock-button"
+                maxWidth="Infinity"/>
+    </VBox>
+</StackPane>

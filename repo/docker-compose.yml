@@ -1,16 +1,31 @@
-# PLACEHOLDER — MUST replace this entire file.
-# This file ALWAYS lives at repo/ root.
-# Configure services for the actual tech stack from the prompt.
-#
-# IMPORTANT: Include a top-level 'name:' to avoid container conflicts:
 name: task-133
-#
-# CI runner does: docker compose up --build -d
-# Then runs: ./run_tests.sh on the host
-#
-# Rules:
-#   - App must work after 'up' with ZERO manual steps
-#   - All env vars must have defaults (CI has no .env)
-#   - DB must auto-initialize
-#   - Health checks must be defined
-#   - build.context must point to where each Dockerfile lives
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: task-133-backend
+    ports:
+      - "8080:8080"
+    environment:
+      APP_HEADLESS: "true"
+      API_PORT: "8080"
+      DB_PATH: "/app/data/console.db"
+      BACKUP_DIR: "/app/data/backups"
+      LOG_DIR: "/app/logs"
+      APP_TEST_ENC_KEY: "dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ=="
+    volumes:
+      - console_data:/app/data
+      - console_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 8
+    restart: unless-stopped
+
+volumes:
+  console_data:
+  console_logs:

@@ -1,0 +1,231 @@
+package com.eaglepoint.console.api.routes;
+
+import com.eaglepoint.console.api.dto.PagedResponse;
+import com.eaglepoint.console.api.middleware.AuthMiddleware;
+import com.eaglepoint.console.model.User;
+import com.eaglepoint.console.service.AppealService;
+import com.eaglepoint.console.service.EvaluationService;
+import com.eaglepoint.console.service.ReviewService;
+import io.javalin.Javalin;
+
+import java.util.Map;
+
+public class EvaluationRoutes {
+
+    public static void register(Javalin app, EvaluationService evalService,
+                                ReviewService reviewService, AppealService appealService) {
+
+        // --- Evaluation Cycles ---
+        app.get("/api/cycles", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
+            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            ctx.json(PagedResponse.of(evalService.listCycles(page, pageSize)));
+        });
+
+        app.post("/api/cycles", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            ctx.status(201).json(Map.of("cycle", evalService.createCycle(
+                (String) body.get("name"),
+                (String) body.get("startDate"),
+                (String) body.get("endDate"),
+                user.getId()
+            )));
+        });
+
+        app.get("/api/cycles/{id}", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("cycle", evalService.getCycle(id)));
+        });
+
+        app.put("/api/cycles/{id}", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("cycle", evalService.updateCycle(
+                id, body.get("name"), body.get("startDate"), body.get("endDate"), body.get("status")
+            )));
+        });
+
+        app.delete("/api/cycles/{id}", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long id = Long.parseLong(ctx.pathParam("id"));
+            evalService.deleteCycle(id);
+            ctx.status(204);
+        });
+
+        // --- Scorecard Templates ---
+        app.get("/api/cycles/{cycleId}/templates", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            long cycleId = Long.parseLong(ctx.pathParam("cycleId"));
+            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
+            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            ctx.json(PagedResponse.of(evalService.listTemplates(cycleId, page, pageSize)));
+        });
+
+        app.post("/api/cycles/{cycleId}/templates", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long cycleId = Long.parseLong(ctx.pathParam("cycleId"));
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            ctx.status(201).json(Map.of("template", evalService.createTemplate(
+                cycleId, (String) body.get("name"), (String) body.get("type")
+            )));
+        });
+
+        app.post("/api/cycles/{cycleId}/templates/{templateId}/metrics", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long templateId = Long.parseLong(ctx.pathParam("templateId"));
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            double weight = Double.parseDouble(body.get("weight").toString());
+            ctx.status(201).json(Map.of("metric", evalService.addMetric(
+                templateId, (String) body.get("name"), (String) body.get("description"), weight
+            )));
+        });
+
+        // --- Scorecards ---
+        app.get("/api/scorecards", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
+            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            Long cycleId = ctx.queryParam("cycleId") != null ? Long.parseLong(ctx.queryParam("cycleId")) : null;
+            ctx.json(PagedResponse.of(evalService.listScorecards(cycleId, page, pageSize)));
+        });
+
+        app.post("/api/scorecards", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER", "REVIEWER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            long templateId = Long.parseLong(body.get("templateId").toString());
+            long evaluateeId = Long.parseLong(body.get("evaluateeId").toString());
+            long cycleId = Long.parseLong(body.get("cycleId").toString());
+            ctx.status(201).json(Map.of("scorecard", evalService.createScorecard(
+                templateId, evaluateeId, cycleId, user.getId()
+            )));
+        });
+
+        app.get("/api/scorecards/{id}", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("scorecard", evalService.getScorecard(id)));
+        });
+
+        app.put("/api/scorecards/{id}/responses", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER", "REVIEWER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("scorecard", evalService.saveResponses(id, body, user.getId())));
+        });
+
+        app.post("/api/scorecards/{id}/submit", ctx -> {
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("scorecard", evalService.submitScorecard(id, user.getId())));
+        });
+
+        app.post("/api/scorecards/{id}/recuse", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "REVIEWER", "SYSTEM_ADMIN");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("scorecard", evalService.recuseScorecard(id, body.get("reason"), user.getId())));
+        });
+
+        // --- Reviews ---
+        app.get("/api/reviews", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
+            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            ctx.json(PagedResponse.of(reviewService.listReviews(page, pageSize)));
+        });
+
+        app.post("/api/reviews", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER", "REVIEWER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            long scorecardId = Long.parseLong(body.get("scorecardId").toString());
+            ctx.status(201).json(Map.of("review", reviewService.createReview(scorecardId, user.getId())));
+        });
+
+        app.get("/api/reviews/{id}", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("review", reviewService.getReview(id)));
+        });
+
+        app.post("/api/reviews/{id}/approve", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "REVIEWER", "SYSTEM_ADMIN");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("review", reviewService.approveReview(id, user.getId(), body.get("notes"))));
+        });
+
+        app.post("/api/reviews/{id}/reject", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "REVIEWER", "SYSTEM_ADMIN");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("review", reviewService.rejectReview(id, user.getId(), body.get("notes"))));
+        });
+
+        app.post("/api/reviews/{id}/flag-conflict", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "REVIEWER", "SYSTEM_ADMIN");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("review", reviewService.flagConflict(id, user.getId(), body.get("reason"))));
+        });
+
+        app.post("/api/reviews/{id}/assign-second", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            long secondReviewerId = Long.parseLong(body.get("reviewerId").toString());
+            ctx.json(Map.of("review", reviewService.assignSecondReviewer(id, user.getId(), secondReviewerId)));
+        });
+
+        // --- Appeals ---
+        app.get("/api/appeals", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
+            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            ctx.json(PagedResponse.of(appealService.listAppeals(page, pageSize)));
+        });
+
+        app.post("/api/appeals", ctx -> {
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            long scorecardId = Long.parseLong(body.get("scorecardId").toString());
+            ctx.status(201).json(Map.of("appeal",
+                appealService.fileAppeal(scorecardId, user.getId(), (String) body.get("reason"))
+            ));
+        });
+
+        app.get("/api/appeals/{id}", ctx -> {
+            AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ctx.json(Map.of("appeal", appealService.getAppeal(id)));
+        });
+
+        app.post("/api/appeals/{id}/resolve", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("appeal", appealService.resolveAppeal(id, user.getId(), body.get("notes"))));
+        });
+
+        app.post("/api/appeals/{id}/reject", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, String> body = ctx.bodyAsClass(Map.class);
+            ctx.json(Map.of("appeal", appealService.rejectAppeal(id, user.getId(), body.get("notes"))));
+        });
+    }
+}

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.eaglepoint.console.ui.bed.BedBoardController"
+      prefWidth="1100" prefHeight="750" spacing="8">
+    <padding>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+    </padding>
+
+    <ToolBar styleClass="sub-toolbar">
+        <Label text="Bed Board" styleClass="window-title"/>
+        <Pane HBox.hgrow="ALWAYS"/>
+        <TextField fx:id="tfFilter" promptText="Filter by label or resident..." styleClass="filter-field"/>
+        <Button fx:id="btnRefresh" text="Refresh" onAction="#onRefresh" mnemonicParsing="false"/>
+    </ToolBar>
+
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <ComboBox fx:id="cbBuildingFilter" promptText="All Buildings" prefWidth="200"/>
+        <ComboBox fx:id="cbStateFilter" promptText="All States" prefWidth="150"/>
+        <Button text="Apply" onAction="#onApplyFilter"/>
+        <Button text="Clear" onAction="#onClearFilter"/>
+        <Pane HBox.hgrow="ALWAYS"/>
+        <Label text="Legend:" styleClass="legend-label"/>
+        <Label text="  " styleClass="bed-available legend-swatch"/>
+        <Label text="Available"/>
+        <Label text="  " styleClass="bed-occupied legend-swatch"/>
+        <Label text="Occupied"/>
+        <Label text="  " styleClass="bed-reserved legend-swatch"/>
+        <Label text="Reserved"/>
+        <Label text="  " styleClass="bed-cleaning legend-swatch"/>
+        <Label text="Cleaning"/>
+        <Label text="  " styleClass="bed-maintenance legend-swatch"/>
+        <Label text="Maintenance"/>
+        <Label text="  " styleClass="bed-out-of-service legend-swatch"/>
+        <Label text="Out of Service"/>
+    </HBox>
+
+    <ScrollPane VBox.vgrow="ALWAYS" fitToWidth="true">
+        <FlowPane fx:id="bedGrid" hgap="8" vgap="8" styleClass="bed-grid">
+            <padding>
+                <Insets top="8" right="8" bottom="8" left="8"/>
+            </padding>
+        </FlowPane>
+    </ScrollPane>
+
+    <Label fx:id="lblBedCount" text="0 beds" styleClass="status-label"/>
+</VBox>

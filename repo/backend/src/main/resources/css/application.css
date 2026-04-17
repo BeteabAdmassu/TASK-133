@@ -1,0 +1,268 @@
+/* ===============================================================
+   Eagle Point Console — Application CSS
+   JavaFX CSS (not standard web CSS)
+   =============================================================== */
+
+/* ----- Bed State Color Classes ----- */
+.bed-available {
+    -fx-background-color: #4caf50;
+    -fx-text-fill: white;
+}
+
+.bed-occupied {
+    -fx-background-color: #f44336;
+    -fx-text-fill: white;
+}
+
+.bed-reserved {
+    -fx-background-color: #2196f3;
+    -fx-text-fill: white;
+}
+
+.bed-cleaning {
+    -fx-background-color: #ff9800;
+    -fx-text-fill: white;
+}
+
+.bed-maintenance {
+    -fx-background-color: #9c27b0;
+    -fx-text-fill: white;
+}
+
+.bed-out-of-service {
+    -fx-background-color: #607d8b;
+    -fx-text-fill: white;
+}
+
+/* ----- Bed Cell (individual cell in bed board grid) ----- */
+.bed-cell {
+    -fx-min-width: 100px;
+    -fx-pref-width: 100px;
+    -fx-min-height: 60px;
+    -fx-pref-height: 60px;
+    -fx-padding: 4;
+    -fx-border-color: #cccccc;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-cursor: hand;
+}
+
+.bed-cell:hover {
+    -fx-border-color: #333333;
+    -fx-border-width: 2;
+}
+
+.bed-cell-label {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+    -fx-alignment: center;
+}
+
+.bed-grid {
+    -fx-background-color: #f5f5f5;
+}
+
+/* ----- Lock Screen Overlay ----- */
+.lock-screen-overlay {
+    -fx-background-color: rgba(0, 0, 0, 0.85);
+}
+
+.lock-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.lock-username {
+    -fx-font-size: 16px;
+    -fx-text-fill: #bbbbbb;
+}
+
+.lock-hint {
+    -fx-font-size: 13px;
+    -fx-text-fill: #999999;
+}
+
+.lock-password-field {
+    -fx-font-size: 14px;
+    -fx-padding: 8;
+}
+
+.lock-error {
+    -fx-text-fill: #ff6b6b;
+    -fx-font-size: 13px;
+}
+
+.lock-unlock-button {
+    -fx-background-color: #1976d2;
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-padding: 8 16;
+}
+
+.lock-unlock-button:hover {
+    -fx-background-color: #1565c0;
+}
+
+/* ----- Inbox Badge ----- */
+.inbox-button {
+    -fx-font-weight: bold;
+}
+
+.inbox-badge {
+    -fx-background-color: #f44336;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-min-width: 16px;
+    -fx-min-height: 16px;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 2 4;
+}
+
+/* ----- Toolbar ----- */
+.main-toolbar {
+    -fx-background-color: #1565c0;
+    -fx-padding: 4 8;
+}
+
+.toolbar-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+    -fx-padding: 6 12;
+}
+
+.toolbar-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+.logout-button {
+    -fx-text-fill: #ffcdd2;
+}
+
+/* ----- Status Bar ----- */
+.status-bar {
+    -fx-background-color: #e0e0e0;
+    -fx-border-color: #bdbdbd;
+    -fx-border-width: 1 0 0 0;
+}
+
+.status-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: #424242;
+}
+
+.status-user {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1565c0;
+}
+
+.status-server {
+    -fx-font-size: 12px;
+    -fx-text-fill: #2e7d32;
+}
+
+/* ----- Window Title ----- */
+.window-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1a237e;
+}
+
+.welcome-label {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1565c0;
+}
+
+.welcome-subtitle {
+    -fx-font-size: 16px;
+    -fx-text-fill: #757575;
+}
+
+/* ----- Sub Toolbar ----- */
+.sub-toolbar {
+    -fx-background-color: #f5f5f5;
+    -fx-border-color: #e0e0e0;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 4 8;
+}
+
+/* ----- Filter Field ----- */
+.filter-field {
+    -fx-pref-width: 200px;
+}
+
+/* ----- Legend Swatch ----- */
+.legend-swatch {
+    -fx-min-width: 16px;
+    -fx-max-width: 16px;
+    -fx-min-height: 16px;
+    -fx-max-height: 16px;
+    -fx-border-radius: 2;
+    -fx-background-radius: 2;
+    -fx-border-color: #888888;
+    -fx-border-width: 1;
+}
+
+/* ----- Notification Inbox Panel ----- */
+.notification-panel {
+    -fx-background-color: white;
+    -fx-border-color: #e0e0e0;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 8, 0, 0, 2);
+    -fx-padding: 8;
+    -fx-max-width: 350px;
+    -fx-max-height: 500px;
+}
+
+.notification-item {
+    -fx-background-color: #f9f9f9;
+    -fx-border-color: #e0e0e0;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 8;
+}
+
+.notification-item-warn {
+    -fx-border-left-color: #ff9800;
+    -fx-border-left-width: 3;
+}
+
+.notification-item-error {
+    -fx-border-left-color: #f44336;
+    -fx-border-left-width: 3;
+}
+
+.notification-item-info {
+    -fx-border-left-color: #2196f3;
+    -fx-border-left-width: 3;
+}
+
+/* ----- Error/Success Labels ----- */
+.error-label {
+    -fx-text-fill: #c62828;
+    -fx-font-size: 13px;
+}
+
+.success-label {
+    -fx-text-fill: #2e7d32;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.mono-label {
+    -fx-font-family: "Courier New", Courier, monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: #424242;
+}
+
+/* ----- Legend Label ----- */
+.legend-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: #757575;
+}

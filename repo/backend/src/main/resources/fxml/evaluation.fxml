@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.eaglepoint.console.ui.evaluation.EvaluationController"
+      prefWidth="1100" prefHeight="750" spacing="8">
+    <padding>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+    </padding>
+
+    <ToolBar styleClass="sub-toolbar">
+        <Label text="Evaluation Management" styleClass="window-title"/>
+        <Pane HBox.hgrow="ALWAYS"/>
+        <Button fx:id="btnRefresh" text="Refresh" onAction="#onRefresh" mnemonicParsing="false"/>
+    </ToolBar>
+
+    <TabPane fx:id="tabPane" VBox.vgrow="ALWAYS">
+
+        <Tab text="Cycles" fx:id="tabCycles" closable="false">
+            <VBox spacing="8">
+                <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                <HBox spacing="8">
+                    <Button text="New Cycle" onAction="#onNewCycle"/>
+                    <Button fx:id="btnActivateCycle" text="Activate" onAction="#onActivateCycle" disable="true"/>
+                    <Button fx:id="btnCloseCycle" text="Close" onAction="#onCloseCycle" disable="true"/>
+                </HBox>
+                <TableView fx:id="tableCycles" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colCycleId" text="ID" prefWidth="60"/>
+                        <TableColumn fx:id="colCycleName" text="Name" prefWidth="200"/>
+                        <TableColumn fx:id="colCycleStart" text="Start" prefWidth="120"/>
+                        <TableColumn fx:id="colCycleEnd" text="End" prefWidth="120"/>
+                        <TableColumn fx:id="colCycleStatus" text="Status" prefWidth="100"/>
+                    </columns>
+                    <placeholder><Label text="No evaluation cycles."/></placeholder>
+                </TableView>
+            </VBox>
+        </Tab>
+
+        <Tab text="Scorecards" fx:id="tabScorecards" closable="false">
+            <VBox spacing="8">
+                <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                <HBox spacing="8">
+                    <Button text="New Scorecard" onAction="#onNewScorecard"/>
+                    <Button fx:id="btnSubmitScorecard" text="Submit" onAction="#onSubmitScorecard" disable="true"/>
+                    <Button fx:id="btnRecuse" text="Flag Conflict" onAction="#onRecuse" disable="true"/>
+                </HBox>
+                <TableView fx:id="tableScorecards" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colScId" text="ID" prefWidth="60"/>
+                        <TableColumn fx:id="colScEvaluatee" text="Evaluatee" prefWidth="150"/>
+                        <TableColumn fx:id="colScTemplate" text="Template" prefWidth="150"/>
+                        <TableColumn fx:id="colScCycle" text="Cycle" prefWidth="120"/>
+                        <TableColumn fx:id="colScStatus" text="Status" prefWidth="100"/>
+                    </columns>
+                    <placeholder><Label text="No scorecards."/></placeholder>
+                </TableView>
+            </VBox>
+        </Tab>
+
+        <Tab text="Reviews" fx:id="tabReviews" closable="false">
+            <VBox spacing="8">
+                <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                <HBox spacing="8">
+                    <Button fx:id="btnApprove" text="Approve" onAction="#onApproveReview" disable="true"/>
+                    <Button fx:id="btnReject" text="Reject" onAction="#onRejectReview" disable="true"/>
+                    <Button fx:id="btnAssignSecond" text="Assign 2nd Reviewer" onAction="#onAssignSecond" disable="true"/>
+                </HBox>
+                <TableView fx:id="tableReviews" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colRevId" text="ID" prefWidth="60"/>
+                        <TableColumn fx:id="colRevScorecard" text="Scorecard ID" prefWidth="100"/>
+                        <TableColumn fx:id="colRevReviewer" text="Reviewer" prefWidth="150"/>
+                        <TableColumn fx:id="colRevStatus" text="Status" prefWidth="100"/>
+                        <TableColumn fx:id="colRevNotes" text="Notes" prefWidth="250"/>
+                    </columns>
+                    <placeholder><Label text="No reviews."/></placeholder>
+                </TableView>
+            </VBox>
+        </Tab>
+
+        <Tab text="Appeals" fx:id="tabAppeals" closable="false">
+            <VBox spacing="8">
+                <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                <HBox spacing="8">
+                    <Button text="File Appeal" onAction="#onFileAppeal"/>
+                    <Button fx:id="btnResolveAppeal" text="Resolve" onAction="#onResolveAppeal" disable="true"/>
+                    <Button fx:id="btnRejectAppeal" text="Reject" onAction="#onRejectAppeal" disable="true"/>
+                </HBox>
+                <TableView fx:id="tableAppeals" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colAppId" text="ID" prefWidth="60"/>
+                        <TableColumn fx:id="colAppScorecard" text="Scorecard ID" prefWidth="100"/>
+                        <TableColumn fx:id="colAppFiler" text="Filed By" prefWidth="120"/>
+                        <TableColumn fx:id="colAppStatus" text="Status" prefWidth="100"/>
+                        <TableColumn fx:id="colAppReason" text="Reason" prefWidth="250"/>
+                    </columns>
+                    <placeholder><Label text="No appeals."/></placeholder>
+                </TableView>
+            </VBox>
+        </Tab>
+
+    </TabPane>
+</VBox>

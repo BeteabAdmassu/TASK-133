@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.eaglepoint.console.ui.MainWindow"
+            prefWidth="1280" prefHeight="800">
+
+    <top>
+        <ToolBar fx:id="mainToolbar" styleClass="main-toolbar">
+            <Button fx:id="btnKpiReview" text="KPI Reviews" onAction="#openKpiReview"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Button fx:id="btnPickupPoints" text="Pickup Points" onAction="#openPickupPoints"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Button fx:id="btnBedBoard" text="Bed Board" onAction="#openBedBoard"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Button fx:id="btnEvaluation" text="Evaluation" onAction="#openEvaluation"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Button fx:id="btnReports" text="Reports" onAction="#openReports"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Button fx:id="btnHealthPanel" text="Health Panel" onAction="#openHealthPanel"
+                    mnemonicParsing="false" styleClass="toolbar-button"/>
+            <Pane HBox.hgrow="ALWAYS"/>
+            <Button fx:id="btnInbox" text="Inbox (0)" onAction="#openInbox"
+                    mnemonicParsing="false" styleClass="toolbar-button inbox-button"/>
+            <Button fx:id="btnLogout" text="Logout" onAction="#logout"
+                    mnemonicParsing="false" styleClass="toolbar-button logout-button"/>
+        </ToolBar>
+    </top>
+
+    <center>
+        <StackPane fx:id="mainContent">
+            <VBox alignment="CENTER" spacing="20">
+                <Label text="Eagle Point Console" styleClass="welcome-label"/>
+                <Label text="Select a module from the toolbar to begin." styleClass="welcome-subtitle"/>
+            </VBox>
+        </StackPane>
+    </center>
+
+    <bottom>
+        <HBox fx:id="statusBar" styleClass="status-bar" spacing="10">
+            <padding>
+                <Insets top="4" right="8" bottom="4" left="8"/>
+            </padding>
+            <Label fx:id="lblStatus" text="Ready" styleClass="status-label"/>
+            <Pane HBox.hgrow="ALWAYS"/>
+            <Label fx:id="lblUser" text="" styleClass="status-user"/>
+            <Label fx:id="lblServerStatus" text="Server: OK" styleClass="status-server"/>
+        </HBox>
+    </bottom>
+</BorderPane>

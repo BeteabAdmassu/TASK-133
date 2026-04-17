@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.eaglepoint.console.ui.pickup.PickupPointController"
+      prefWidth="1000" prefHeight="700" spacing="8">
+    <padding>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+    </padding>
+
+    <ToolBar styleClass="sub-toolbar">
+        <Label text="Pickup Points" styleClass="window-title"/>
+        <Pane HBox.hgrow="ALWAYS"/>
+        <TextField fx:id="tfFilter" promptText="Filter by address or zip..." styleClass="filter-field"/>
+        <Button fx:id="btnRefresh" text="Refresh" onAction="#onRefresh" mnemonicParsing="false"/>
+        <Button fx:id="btnExport" text="Export (Ctrl+E)" onAction="#onExport" mnemonicParsing="false"/>
+    </ToolBar>
+
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <ComboBox fx:id="cbCommunityFilter" promptText="All Communities" prefWidth="200"/>
+        <ComboBox fx:id="cbStatusFilter" promptText="All Statuses" prefWidth="150"/>
+        <Button text="Apply" onAction="#onApplyFilter"/>
+        <Button text="Clear" onAction="#onClearFilter"/>
+    </HBox>
+
+    <TableView fx:id="tablePickupPoints" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="colId" text="ID" prefWidth="60"/>
+            <TableColumn fx:id="colAddress" text="Address" prefWidth="220"/>
+            <TableColumn fx:id="colZipCode" text="Zip Code" prefWidth="90"/>
+            <TableColumn fx:id="colCommunity" text="Community" prefWidth="150"/>
+            <TableColumn fx:id="colCapacity" text="Capacity" prefWidth="80"/>
+            <TableColumn fx:id="colStatus" text="Status" prefWidth="100"/>
+            <TableColumn fx:id="colPausedUntil" text="Paused Until" prefWidth="130"/>
+        </columns>
+        <placeholder>
+            <Label text="No pickup points found."/>
+        </placeholder>
+    </TableView>
+
+    <HBox fx:id="paginationBar" spacing="8" alignment="CENTER_RIGHT">
+        <Button fx:id="btnPrev" text="&lt; Prev" onAction="#onPrevPage"/>
+        <Label fx:id="lblPage" text="Page 1"/>
+        <Button fx:id="btnNext" text="Next &gt;" onAction="#onNextPage"/>
+    </HBox>
+</VBox>

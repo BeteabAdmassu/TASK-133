@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.eaglepoint.console.ui.kpi.KpiReviewController"
+      prefWidth="1000" prefHeight="700" spacing="8">
+    <padding>
+        <Insets top="8" right="8" bottom="8" left="8"/>
+    </padding>
+
+    <ToolBar styleClass="sub-toolbar">
+        <Label text="KPI Reviews" styleClass="window-title"/>
+        <Pane HBox.hgrow="ALWAYS"/>
+        <TextField fx:id="tfFilter" promptText="Filter..." styleClass="filter-field"/>
+        <Button fx:id="btnNew" text="New Score (Ctrl+N)" onAction="#onNewScore"
+                mnemonicParsing="false"/>
+        <Button fx:id="btnExport" text="Export (Ctrl+E)" onAction="#onExport"
+                mnemonicParsing="false"/>
+        <Button fx:id="btnRefresh" text="Refresh" onAction="#onRefresh"
+                mnemonicParsing="false"/>
+    </ToolBar>
+
+    <HBox spacing="8" alignment="CENTER_LEFT">
+        <ComboBox fx:id="cbKpiFilter" promptText="All KPIs" prefWidth="200"/>
+        <ComboBox fx:id="cbServiceAreaFilter" promptText="All Service Areas" prefWidth="200"/>
+        <DatePicker fx:id="dpFrom" promptText="From"/>
+        <DatePicker fx:id="dpTo" promptText="To"/>
+        <Button text="Apply" onAction="#onApplyFilter"/>
+        <Button text="Clear" onAction="#onClearFilter"/>
+    </HBox>
+
+    <TableView fx:id="tableScores" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="colId" text="ID" prefWidth="60"/>
+            <TableColumn fx:id="colKpiName" text="KPI" prefWidth="200"/>
+            <TableColumn fx:id="colValue" text="Value" prefWidth="100"/>
+            <TableColumn fx:id="colUnit" text="Unit" prefWidth="80"/>
+            <TableColumn fx:id="colDate" text="Score Date" prefWidth="120"/>
+            <TableColumn fx:id="colServiceArea" text="Service Area" prefWidth="160"/>
+            <TableColumn fx:id="colNotes" text="Notes" prefWidth="200"/>
+            <TableColumn fx:id="colComputedBy" text="Recorded By" prefWidth="120"/>
+        </columns>
+        <placeholder>
+            <Label text="No KPI scores found."/>
+        </placeholder>
+    </TableView>
+
+    <HBox fx:id="paginationBar" spacing="8" alignment="CENTER_RIGHT">
+        <Button fx:id="btnPrev" text="&lt; Prev" onAction="#onPrevPage"/>
+        <Label fx:id="lblPage" text="Page 1"/>
+        <Button fx:id="btnNext" text="Next &gt;" onAction="#onNextPage"/>
+    </HBox>
+</VBox>

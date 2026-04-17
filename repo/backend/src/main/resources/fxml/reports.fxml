@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.eaglepoint.console.ui.reports.ReportsController"
+      prefWidth="900" prefHeight="650" spacing="12">
+    <padding>
+        <Insets top="12" right="12" bottom="12" left="12"/>
+    </padding>
+
+    <Label text="Reports &amp; Exports" styleClass="window-title"/>
+
+    <GridPane hgap="12" vgap="12">
+        <columnConstraints>
+            <ColumnConstraints minWidth="160" prefWidth="160"/>
+            <ColumnConstraints minWidth="300" prefWidth="300" hgrow="ALWAYS"/>
+        </columnConstraints>
+
+        <Label text="Report Type:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+        <ComboBox fx:id="cbReportType" prefWidth="300"
+                  GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+        <Label text="Format:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+        <ComboBox fx:id="cbFormat" prefWidth="200"
+                  GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+        <Label text="Date From:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+        <DatePicker fx:id="dpFrom" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+        <Label text="Date To:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+        <DatePicker fx:id="dpTo" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+        <Label text="Service Area:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+        <ComboBox fx:id="cbServiceArea" promptText="All Service Areas" prefWidth="300"
+                  GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+
+        <Label text="Destination:" GridPane.rowIndex="5" GridPane.columnIndex="0"/>
+        <HBox spacing="8" GridPane.rowIndex="5" GridPane.columnIndex="1">
+            <TextField fx:id="tfDestination" promptText="Output folder path" HBox.hgrow="ALWAYS"/>
+            <Button text="Browse..." onAction="#onBrowseDestination"/>
+        </HBox>
+
+        <Label text="Schedule:" GridPane.rowIndex="6" GridPane.columnIndex="0"/>
+        <HBox spacing="8" alignment="CENTER_LEFT" GridPane.rowIndex="6" GridPane.columnIndex="1">
+            <ComboBox fx:id="cbScheduleType" promptText="One-time" prefWidth="130"/>
+            <TextField fx:id="tfScheduleTime" promptText="HH:mm" prefWidth="90" visible="false"/>
+        </HBox>
+    </GridPane>
+
+    <HBox spacing="8">
+        <Button fx:id="btnGenerate" text="Generate (Ctrl+E)" onAction="#onGenerate"
+                defaultButton="true" mnemonicParsing="false"/>
+        <Button text="Clear" onAction="#onClear" mnemonicParsing="false"/>
+    </HBox>
+
+    <VBox fx:id="progressSection" spacing="8" visible="false">
+        <ProgressBar fx:id="progressBar" maxWidth="Infinity" progress="0"/>
+        <Label fx:id="lblProgress" text=""/>
+    </VBox>
+
+    <VBox fx:id="resultSection" spacing="8" visible="false">
+        <Label text="Export Complete" styleClass="success-label"/>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <Label text="File:"/>
+            <Label fx:id="lblOutputPath" styleClass="mono-label" wrapText="true"/>
+        </HBox>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <Label text="SHA-256:"/>
+            <Label fx:id="lblSha256" styleClass="mono-label" wrapText="true"/>
+        </HBox>
+        <Button fx:id="btnOpenFile" text="Open File" onAction="#onOpenFile"/>
+    </VBox>
+
+    <Label fx:id="lblError" text="" styleClass="error-label" wrapText="true" visible="false"/>
+</VBox>
