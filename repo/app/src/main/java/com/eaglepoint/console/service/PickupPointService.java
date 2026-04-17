@@ -30,6 +30,7 @@ public class PickupPointService {
     private final GeozoneRepository geozoneRepo;
     private final EncryptionUtil encryptionUtil;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     /** Legacy ctor — no geozone lookup; match() falls back to direct ZIP only. */
     public PickupPointService(PickupPointRepository ppRepo, CommunityRepository communityRepo,
@@ -40,11 +41,20 @@ public class PickupPointService {
     public PickupPointService(PickupPointRepository ppRepo, CommunityRepository communityRepo,
                                GeozoneRepository geozoneRepo,
                                SecurityConfig securityConfig, AuditService auditService) {
+        this(ppRepo, communityRepo, geozoneRepo, securityConfig, auditService,
+            NotificationService.getInstance());
+    }
+
+    public PickupPointService(PickupPointRepository ppRepo, CommunityRepository communityRepo,
+                               GeozoneRepository geozoneRepo,
+                               SecurityConfig securityConfig, AuditService auditService,
+                               NotificationService notificationService) {
         this.ppRepo = ppRepo;
         this.communityRepo = communityRepo;
         this.geozoneRepo = geozoneRepo;
         this.encryptionUtil = new EncryptionUtil(securityConfig.getEncryptionKey());
         this.auditService = auditService;
+        this.notificationService = notificationService;
     }
 
     public PickupPoint createPickupPoint(long communityId, String address, String zipCode,
@@ -232,11 +242,39 @@ public class PickupPointService {
         }
     }
 
+    /**
+     * Auto-resume pickup points whose {@code paused_until} timestamp is in
+     * the past.  Must honour the same one-active-pickup-point-per-community
+     * invariant that {@link #resumePickupPoint} enforces; otherwise a manual
+     * re-activation after a service pause would be blocked while the
+     * scheduled sweep quietly activates a second pickup point in the same
+     * community.
+     *
+     * <p>If the community already has an active pickup point, we leave the
+     * row paused, extend {@code pause_reason} with a conflict note, log a
+     * WARN notification so ops can resolve it manually, and move on.</p>
+     */
     public void resumeExpiredPauses() {
         String now = Instant.now().toString();
         List<PickupPoint> expired = ppRepo.findPausedExpired(now);
         for (PickupPoint pp : expired) {
             try {
+                // Enforce the same invariant as the manual resume path.
+                if (ppRepo.countActiveByCommunity(pp.getCommunityId()) > 0) {
+                    log.warn("Skipping auto-resume for pickup point {} — community {} already has an active pickup point",
+                        pp.getId(), pp.getCommunityId());
+                    if (notificationService != null) {
+                        notificationService.addAlert("WARN",
+                            "Pickup point " + pp.getId() + " could not be auto-resumed: community already has an active pickup point",
+                            "PickupPoint", pp.getId());
+                    }
+                    // Clear the pausedUntil so we don't re-alert every minute,
+                    // and flag the conflict in pause_reason so operators can see it.
+                    pp.setPausedUntil(null);
+                    pp.setPauseReason("AUTO_RESUME_BLOCKED: community already has an active pickup point");
+                    ppRepo.update(pp);
+                    continue;
+                }
                 pp.setStatus("ACTIVE");
                 pp.setPausedUntil(null);
                 pp.setPauseReason(null);

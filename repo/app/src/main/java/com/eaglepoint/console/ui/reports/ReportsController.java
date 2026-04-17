@@ -47,8 +47,16 @@ public class ReportsController {
         );
         cbFormat.getItems().addAll("EXCEL", "PDF", "CSV");
         cbFormat.setValue("EXCEL");
-        cbScheduleType.getItems().addAll("One-time", "Daily", "Weekly", "Monthly");
+        // Scheduling from the Reports window is handled by the Scheduled Jobs
+        // admin screen (REPORT jobs in /api/system/scheduled-jobs). The combo
+        // here is disabled to prevent operators from thinking they can schedule
+        // ad-hoc reports from this dialog.
+        cbScheduleType.getItems().add("One-time");
         cbScheduleType.setValue("One-time");
+        cbScheduleType.setDisable(true);
+        cbScheduleType.setTooltip(new Tooltip(
+            "Recurring reports are configured in the Scheduled Jobs admin screen (REPORT job type)."
+        ));
     }
 
     @FXML private void onBrowseDestination() {
@@ -58,7 +66,7 @@ public class ReportsController {
         if (dir != null) tfDestination.setText(dir.getAbsolutePath());
     }
 
-    @FXML private void onGenerate() {
+    @FXML void onGenerate() {
         String reportType = cbReportType.getValue();
         String format = cbFormat.getValue();
         String dest = tfDestination.getText();
@@ -117,8 +125,12 @@ public class ReportsController {
                         progressSection.setVisible(false);
                         btnGenerate.setDisable(false);
                         if ("COMPLETED".equals(status)) {
-                            lblOutputPath.setText(String.valueOf(job.getOrDefault("outputPath", "")));
-                            lblSha256.setText(String.valueOf(job.getOrDefault("sha256", "")));
+                            // Match the server DTO — ExportJob serialises
+                            // outputFilePath/sha256Hash (see ExportJob model).
+                            Object outPath = job.get("outputFilePath");
+                            Object sha = job.get("sha256Hash");
+                            lblOutputPath.setText(outPath != null ? String.valueOf(outPath) : "");
+                            lblSha256.setText(sha != null ? String.valueOf(sha) : "");
                             resultSection.setVisible(true);
                         } else {
                             showError("Export failed: " + job.getOrDefault("errorMessage", "Unknown error"));

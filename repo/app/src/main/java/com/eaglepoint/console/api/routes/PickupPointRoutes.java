@@ -15,8 +15,9 @@ public class PickupPointRoutes {
     public static void register(Javalin app, PickupPointService ppService) {
         app.get("/api/pickup-points", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             var result = ppService.listPickupPoints(page, pageSize);
             if (ctx.queryParam("sort") != null || ctx.queryParam("fields") != null) {
                 ctx.json(QueryShaper.shape(ctx, result));

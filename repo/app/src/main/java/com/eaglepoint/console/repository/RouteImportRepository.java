@@ -91,4 +91,28 @@ public class RouteImportRepository extends BaseRepository {
             "SELECT COUNT(*) FROM route_checkpoints WHERE import_id = ?",
             this::mapCheckpoint, page, pageSize, importId);
     }
+
+    /** Returns imports in any non-terminal status — used by crash-safe resume. */
+    public java.util.List<RouteImport> findIncomplete() {
+        return queryList(
+            "SELECT * FROM route_imports WHERE status IN ('PENDING','VALIDATING','PROCESSING') ORDER BY id",
+            this::mapImport
+        );
+    }
+
+    /** Count already-committed checkpoints for an import — resume pointer. */
+    public int countCheckpoints(long importId) {
+        return queryOne(
+            "SELECT COUNT(*) as cnt FROM route_checkpoints WHERE import_id = ?",
+            rs -> rs.getInt("cnt"), importId
+        ).orElse(0);
+    }
+
+    /** Count checkpoints flagged with a deviation or missed alert for an import. */
+    public int countAlertCheckpoints(long importId) {
+        return queryOne(
+            "SELECT COUNT(*) as cnt FROM route_checkpoints WHERE import_id = ? AND (is_deviation_alert = 1 OR is_missed_alert = 1)",
+            rs -> rs.getInt("cnt"), importId
+        ).orElse(0);
+    }
 }

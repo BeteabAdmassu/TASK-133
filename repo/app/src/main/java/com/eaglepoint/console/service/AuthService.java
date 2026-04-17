@@ -91,7 +91,18 @@ public class AuthService {
             throw new UnauthorizedException("Token has expired");
         }
 
-        return userRepo.findById(token.getUserId())
+        User user = userRepo.findById(token.getUserId())
             .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+        // Deactivated users must not be able to continue using a previously
+        // issued token.  We revoke the token eagerly so subsequent calls fail
+        // with a normal "invalid token" 401 even if the caller retries quickly.
+        if (!user.isActive()) {
+            tokenRepo.deleteByUserId(user.getId());
+            log.warn("Rejected request from deactivated user {} (id={})", user.getUsername(), user.getId());
+            throw new UnauthorizedException("User account is deactivated");
+        }
+
+        return user;
     }
 }

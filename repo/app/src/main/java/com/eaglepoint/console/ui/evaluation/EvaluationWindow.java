@@ -1,5 +1,7 @@
 package com.eaglepoint.console.ui.evaluation;
 
+import com.eaglepoint.console.ui.reports.ReportsWindow;
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.VBox;
@@ -29,6 +31,12 @@ public class EvaluationWindow {
             Scene scene = new Scene(root, 1100, 750);
             scene.getStylesheets().add(
                 EvaluationWindow.class.getResource("/css/application.css").toExternalForm());
+
+            // The evaluation window has no bound find/new/export actions yet;
+            // install the shortcuts so users get a consistent "not available
+            // here" prompt instead of silent no-ops, and keep Ctrl+L wired.
+            GlobalShortcuts.install(scene, stage, null, null,
+                () -> ReportsWindow.show(stage));
 
             stage.setScene(scene);
             stage.show();

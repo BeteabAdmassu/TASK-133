@@ -162,4 +162,9 @@ public class KpiReviewController {
     @FXML void onExport() {
         if (ownerStage != null) ExportDialog.show("KPI_SCORES", ownerStage);
     }
+
+    /** Ctrl+F handler: focus the free-text filter above the KPI table. */
+    public void focusSearch() {
+        if (tfFilter != null) tfFilter.requestFocus();
+    }
 }

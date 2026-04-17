@@ -1,5 +1,6 @@
 package com.eaglepoint.console.ui.reports;
 
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.VBox;
@@ -31,6 +32,11 @@ public class ReportsWindow {
             Scene scene = new Scene(root, 900, 650);
             scene.getStylesheets().add(
                 ReportsWindow.class.getResource("/css/application.css").toExternalForm());
+
+            GlobalShortcuts.install(scene, stage,
+                null,            // Ctrl+F: no list to filter here
+                ctrl::onGenerate, // Ctrl+N: same as "Generate" button
+                ctrl::onGenerate);
 
             stage.setScene(scene);
             stage.show();

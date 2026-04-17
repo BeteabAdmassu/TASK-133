@@ -6,6 +6,7 @@ import com.eaglepoint.console.exception.NotFoundException;
 import com.eaglepoint.console.exception.ValidationException;
 import com.eaglepoint.console.model.PagedResult;
 import com.eaglepoint.console.model.User;
+import com.eaglepoint.console.repository.ApiTokenRepository;
 import com.eaglepoint.console.repository.UserRepository;
 import com.eaglepoint.console.security.EncryptionUtil;
 import com.eaglepoint.console.security.PasswordUtil;
@@ -20,10 +21,16 @@ public class UserService {
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{3,50}$");
 
     private final UserRepository userRepo;
+    private final ApiTokenRepository tokenRepo;
     private final EncryptionUtil encryptionUtil;
 
     public UserService(UserRepository userRepo, SecurityConfig securityConfig) {
+        this(userRepo, null, securityConfig);
+    }
+
+    public UserService(UserRepository userRepo, ApiTokenRepository tokenRepo, SecurityConfig securityConfig) {
         this.userRepo = userRepo;
+        this.tokenRepo = tokenRepo;
         this.encryptionUtil = new EncryptionUtil(securityConfig.getEncryptionKey());
     }
 
@@ -63,6 +70,8 @@ public class UserService {
         User user = userRepo.findById(id)
             .orElseThrow(() -> new NotFoundException("User", id));
 
+        boolean wasActive = user.isActive();
+
         if (displayName != null) {
             validateDisplayName(displayName);
             user.setDisplayName(displayName.trim());
@@ -80,14 +89,29 @@ public class UserService {
         }
 
         userRepo.update(user);
+
+        // Transitioning from ACTIVE -> INACTIVE must revoke any outstanding
+        // bearer tokens so the user's next request gets 401.  We do this in
+        // the service so updateUser() and deactivateUser() have the same
+        // security-critical side effect.
+        if (wasActive && !user.isActive() && tokenRepo != null) {
+            tokenRepo.deleteByUserId(id);
+        }
         return userRepo.findById(id).orElseThrow();
     }
 
     public void deactivateUser(long id) {
-        if (userRepo.findById(id).isEmpty()) {
-            throw new NotFoundException("User", id);
-        }
+        User user = userRepo.findById(id)
+            .orElseThrow(() -> new NotFoundException("User", id));
         userRepo.deactivate(id);
+        // Revoke tokens for the just-deactivated user — prevents stale tokens
+        // from bypassing the isActive check on subsequent requests.
+        if (tokenRepo != null && user.isActive()) {
+            tokenRepo.deleteByUserId(id);
+        } else if (tokenRepo != null) {
+            // Already inactive: still clear any dangling tokens defensively.
+            tokenRepo.deleteByUserId(id);
+        }
     }
 
     private void validateUsername(String username) {

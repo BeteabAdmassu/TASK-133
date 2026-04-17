@@ -65,4 +65,11 @@ public class ExportJobRepository extends BaseRepository {
             this::mapRow
         );
     }
+
+    public void updateCheckpointPath(long id, String checkpointPath) {
+        execute(
+            "UPDATE export_jobs SET checkpoint_path=?, updated_at=datetime('now') WHERE id=?",
+            checkpointPath, id
+        );
+    }
 }

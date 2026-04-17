@@ -1,5 +1,6 @@
 package com.eaglepoint.console.service;
 
+import com.eaglepoint.console.config.AppConfig;
 import com.eaglepoint.console.exception.ForbiddenException;
 import com.eaglepoint.console.exception.NotFoundException;
 import com.eaglepoint.console.export.CsvExporter;
@@ -11,9 +12,11 @@ import com.eaglepoint.console.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,14 +26,24 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 /**
- * Async export service.
+ * Async export service with crash-safe resume.
  *
- * <p>Builds a row set for the requested {@code entityType} from the real
- * repositories and writes it to disk as CSV / Excel / PDF.  Sensitive fields
- * (encrypted staff ids, resident ids, pickup addresses, password hashes) are
- * <strong>always masked</strong> in the output — callers do not control this.
- * The resulting artefact is written alongside a SHA-256 sidecar for
- * tamper-evident archival.</p>
+ * <p>Each job writes its artefact to a {@code .part} temp file inside the
+ * destination folder; the temp path is persisted on the job row as
+ * {@code checkpoint_path}.  Only after the write completes successfully is
+ * the temp file atomically renamed to its final filename, the SHA-256
+ * sidecar written, and the job marked {@code COMPLETED}.</p>
+ *
+ * <p>On startup {@link #resumeIncompleteJobs()} picks up any job in status
+ * {@code PENDING} or {@code RUNNING}, removes any partial {@code .part} file
+ * (so we never keep a truncated artefact), and restarts the job from
+ * scratch.  Because a {@code COMPLETED} job has already moved its artefact
+ * into its final path, restarts are safe: an interrupted job never produces
+ * a duplicate completed file.</p>
+ *
+ * <p>Sensitive fields (encrypted staff ids, resident ids, pickup addresses,
+ * password hashes) are <strong>always masked</strong> in the output — callers
+ * do not control this.</p>
  */
 public class ExportService {
 
@@ -109,38 +122,86 @@ public class ExportService {
     public void executeJob(long jobId) {
         ExportJob job = exportRepo.findById(jobId).orElse(null);
         if (job == null) return;
+        if ("COMPLETED".equals(job.getStatus())) {
+            // Idempotent: never re-run a completed job (avoids duplicate artefacts).
+            return;
+        }
         try {
             Path destDir = Paths.get(job.getDestinationPath());
             Files.createDirectories(destDir);
             String extension = job.getType().equals("EXCEL") ? ".xlsx" : job.getType().equals("PDF") ? ".pdf" : ".csv";
-            String filename = job.getEntityType() + "_export_" + System.currentTimeMillis() + extension;
+            String filename = job.getEntityType() + "_export_" + jobId + "_" + System.currentTimeMillis() + extension;
             Path outputPath = destDir.resolve(filename);
+            Path partPath = destDir.resolve(filename + ".part");
+
+            // If a stale checkpoint from a prior crash points at a .part, delete it.
+            cleanupStalePart(job.getCheckpointPath());
+
+            // Record the in-progress temp path BEFORE writing — this is our
+            // crash-safe checkpoint.
+            exportRepo.updateCheckpointPath(jobId, partPath.toString());
 
             List<Map<String, Object>> rows = buildRows(job.getEntityType());
             List<String> columns = rows.isEmpty() ? List.of() : new ArrayList<>(rows.get(0).keySet());
 
             switch (job.getType()) {
-                case "EXCEL" -> new ExcelExporter().write(rows, columns, outputPath);
-                case "PDF" -> new PdfExporter().write(rows, columns, job.getEntityType() + " Export", outputPath);
-                case "CSV" -> new CsvExporter().write(rows, columns, outputPath);
+                case "EXCEL" -> new ExcelExporter().write(rows, columns, partPath);
+                case "PDF" -> new PdfExporter().write(rows, columns, job.getEntityType() + " Export", partPath);
+                case "CSV" -> new CsvExporter().write(rows, columns, partPath);
+            }
+
+            // Atomic publish: .part -> final. Never leaves a half-written final file.
+            try {
+                Files.move(partPath, outputPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                Files.move(partPath, outputPath, StandardCopyOption.REPLACE_EXISTING);
             }
 
             String sha256 = FingerprintUtil.writeSha256Sidecar(outputPath);
             exportRepo.updateStatus(jobId, "COMPLETED", outputPath.toString(), sha256, null);
+            exportRepo.updateCheckpointPath(jobId, null);
             log.info("Export job {} completed: {} ({} rows)", jobId, outputPath, rows.size());
         } catch (ForbiddenException e) {
             exportRepo.updateStatus(jobId, "FAILED", null, null, e.getMessage());
+            exportRepo.updateCheckpointPath(jobId, null);
         } catch (Exception e) {
             log.error("Export job {} failed: {}", jobId, e.getMessage(), e);
             exportRepo.updateStatus(jobId, "FAILED", null, null, e.getMessage());
+            exportRepo.updateCheckpointPath(jobId, null);
         }
     }
 
+    private void cleanupStalePart(String checkpointPath) {
+        if (checkpointPath == null || checkpointPath.isBlank()) return;
+        try {
+            Path p = Paths.get(checkpointPath);
+            if (Files.exists(p)) {
+                Files.delete(p);
+                log.info("Removed stale export checkpoint file: {}", p);
+            }
+        } catch (IOException e) {
+            log.warn("Could not remove stale export checkpoint {}: {}", checkpointPath, e.getMessage());
+        }
+    }
+
+    /**
+     * Restart any PENDING/RUNNING export that was interrupted.  We remove the
+     * partial {@code .part} artefact (recorded in {@code checkpoint_path}) so
+     * we never ship a truncated file, then re-enqueue the job — re-executing
+     * is safe because a COMPLETED job short-circuits in {@link #executeJob}.
+     */
     public void resumeIncompleteJobs() {
         List<ExportJob> incomplete = exportRepo.findIncomplete();
         for (ExportJob job : incomplete) {
-            log.info("Resuming export job {}", job.getId());
-            executor.submit(() -> executeJob(job.getId()));
+            cleanupStalePart(job.getCheckpointPath());
+            if (job.getCheckpointPath() != null) {
+                exportRepo.updateCheckpointPath(job.getId(), null);
+            }
+            // Reset status so resumed job is re-marked as RUNNING by executeJob.
+            exportRepo.updateStarted(job.getId());
+            log.info("Resuming export job {} ({})", job.getId(), job.getEntityType());
+            final long jobId = job.getId();
+            executor.submit(() -> executeJob(jobId));
         }
     }
 
@@ -162,10 +223,6 @@ public class ExportService {
 
     // ─── Entity-driven row builders ──────────────────────────────────────────
 
-    /**
-     * Dispatch to the right row builder for this entityType.  Unknown types
-     * throw so the job is marked FAILED instead of silently emitting garbage.
-     */
     private List<Map<String, Object>> buildRows(String entityType) {
         String type = entityType == null ? "" : entityType.toUpperCase();
         return switch (type) {
@@ -214,7 +271,7 @@ public class ExportService {
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("id", pp.getId());
             r.put("communityId", pp.getCommunityId());
-            r.put("address", MASKED); // address is AES-GCM encrypted; always masked in exports
+            r.put("address", MASKED);
             r.put("zipCode", pp.getZipCode());
             r.put("streetRangeStart", pp.getStreetRangeStart());
             r.put("streetRangeEnd", pp.getStreetRangeEnd());
@@ -232,7 +289,6 @@ public class ExportService {
             r.put("roomId", b.getRoomId());
             r.put("bedLabel", b.getBedLabel());
             r.put("state", b.getState());
-            // residentId is AES-GCM encrypted PII; masked in exports
             r.put("residentId", b.getResidentIdEncrypted() == null ? null : MASKED);
             r.put("updatedAt", b.getUpdatedAt());
             return r;
@@ -271,7 +327,6 @@ public class ExportService {
             r.put("role", u.getRole());
             r.put("isActive", u.isActive());
             r.put("lastLogin", u.getLastLogin());
-            // passwordHash and staffIdEncrypted are never included.
             r.put("staffId", MASKED);
             return r;
         });
@@ -314,7 +369,6 @@ public class ExportService {
         });
     }
 
-    /** Page-walking helper that stops at an empty page or the MAX_ROWS cap. */
     private <T> List<Map<String, Object>> collect(Function<Integer, List<T>> pageFetcher,
                                                    Function<T, Map<String, Object>> mapper) {
         List<Map<String, Object>> out = new ArrayList<>();
@@ -326,7 +380,7 @@ public class ExportService {
                 out.add(mapper.apply(item));
                 if (out.size() >= MAX_ROWS) break;
             }
-            if (data.size() < 500) break; // last page
+            if (data.size() < 500) break;
             page++;
         }
         return out;

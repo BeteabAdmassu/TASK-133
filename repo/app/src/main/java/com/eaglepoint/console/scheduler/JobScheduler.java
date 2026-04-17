@@ -1,11 +1,12 @@
 package com.eaglepoint.console.scheduler;
 
-import com.eaglepoint.console.config.AppConfig;
 import com.eaglepoint.console.model.ScheduledJobConfig;
 import com.eaglepoint.console.repository.ScheduledJobRepository;
 import com.eaglepoint.console.scheduler.jobs.ArchivalJob;
 import com.eaglepoint.console.scheduler.jobs.BackupJob;
 import com.eaglepoint.console.scheduler.jobs.ConsistencyCheckJob;
+import com.eaglepoint.console.scheduler.jobs.ScheduledReportJob;
+import com.eaglepoint.console.service.ExportService;
 import com.eaglepoint.console.service.PickupPointService;
 import org.quartz.*;
 import org.quartz.impl.StdSchedulerFactory;
@@ -30,6 +31,10 @@ public class JobScheduler {
 
     // Static service references for jobs to access
     private static Object[] serviceContext;
+    /** Export service exposed to jobs (ScheduledReportJob). */
+    private static volatile ExportService exportService;
+    /** Default user id used as "initiatedBy" when the scheduler runs a report. */
+    private static volatile long schedulerUserId = 1L;
 
     public static synchronized JobScheduler getInstance() {
         if (instance == null) instance = new JobScheduler();
@@ -41,10 +46,27 @@ public class JobScheduler {
         this.jobRepo = jobRepo;
         this.pickupPointService = pickupPointService;
         serviceContext = services;
+        for (Object s : services) {
+            if (s instanceof ExportService es) {
+                exportService = es;
+            }
+        }
     }
 
     public static Object[] getServiceContext() {
         return serviceContext;
+    }
+
+    public static ExportService getExportService() {
+        return exportService;
+    }
+
+    public static long getSchedulerUserId() {
+        return schedulerUserId;
+    }
+
+    public static void setSchedulerUserId(long id) {
+        schedulerUserId = id;
     }
 
     public void start() throws Exception {
@@ -84,14 +106,18 @@ public class JobScheduler {
                 case "BACKUP" -> BackupJob.class;
                 case "ARCHIVE" -> ArchivalJob.class;
                 case "CONSISTENCY_CHECK" -> ConsistencyCheckJob.class;
+                case "REPORT" -> ScheduledReportJob.class;
                 default -> null;
             };
             if (jobClass == null) return;
 
-            JobDetail jobDetail = JobBuilder.newJob(jobClass)
+            JobBuilder builder = JobBuilder.newJob(jobClass)
                 .withIdentity(config.getJobType() + "-" + config.getId())
-                .usingJobData("dbJobId", config.getId())
-                .build();
+                .usingJobData("dbJobId", config.getId());
+            if (config.getConfigJson() != null) {
+                builder.usingJobData("configJson", config.getConfigJson());
+            }
+            JobDetail jobDetail = builder.build();
 
             CronTrigger trigger = TriggerBuilder.newTrigger()
                 .withIdentity(config.getJobType() + "-trigger-" + config.getId())

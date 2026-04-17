@@ -1,5 +1,7 @@
 package com.eaglepoint.console.ui.bed;
 
+import com.eaglepoint.console.ui.reports.ReportsWindow;
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.VBox;
@@ -30,6 +32,11 @@ public class BedBoardWindow {
             Scene scene = new Scene(root, 1100, 750);
             scene.getStylesheets().add(
                 BedBoardWindow.class.getResource("/css/application.css").toExternalForm());
+
+            GlobalShortcuts.install(scene, stage,
+                ctrl::focusSearch,
+                ctrl::openNewBed,
+                () -> ReportsWindow.show(stage));
 
             stage.setScene(scene);
             stage.setOnHidden(e -> ctrl.stopRefresh());

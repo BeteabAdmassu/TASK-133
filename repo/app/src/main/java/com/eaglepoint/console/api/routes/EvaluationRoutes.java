@@ -19,8 +19,9 @@ public class EvaluationRoutes {
         // --- Evaluation Cycles ---
         app.get("/api/cycles", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(evalService.listCycles(page, pageSize)));
         });
 
@@ -103,8 +104,9 @@ public class EvaluationRoutes {
         // --- Scorecards ---
         app.get("/api/scorecards", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(evalService.listScorecards(page, pageSize)));
         });
 
@@ -163,8 +165,9 @@ public class EvaluationRoutes {
         // --- Reviews ---
         app.get("/api/reviews", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(reviewService.listReviews(page, pageSize)));
         });
 
@@ -218,8 +221,9 @@ public class EvaluationRoutes {
         // --- Appeals ---
         app.get("/api/appeals", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(appealService.listAppeals(page, pageSize)));
         });
 

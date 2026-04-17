@@ -110,18 +110,19 @@ public class ApiClient {
         System.arraycopy(fileBytes, 0, combined, start.length, fileBytes.length);
         System.arraycopy(end, 0, combined, start.length + fileBytes.length, end.length);
 
-        var req = HttpRequest.newBuilder()
+        var builder = HttpRequest.newBuilder()
             .uri(URI.create(baseUrl + path))
             .timeout(Duration.ofSeconds(60))
             .header("Content-Type", "multipart/form-data; boundary=" + boundary)
             .header("Accept", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofByteArray(combined))
-            .build();
+            .POST(HttpRequest.BodyPublishers.ofByteArray(combined));
 
+        // Propagate the logged-in user's bearer token — without this, multipart
+        // uploads (route imports) hit a 401 even when the session is valid.
         AuthSession.getInstance().getRawToken().ifPresent(token ->
-            log.debug("Adding auth header for multipart request"));
+            builder.header("Authorization", "Bearer " + token));
 
-        var resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        var resp = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         checkStatus(resp);
         return mapper.readValue(resp.body(), Map.class);
     }

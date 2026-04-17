@@ -159,4 +159,20 @@ public class PickupPointController {
     @FXML private void onExport() {
         if (ownerStage != null) ExportDialog.show("PICKUP_POINTS", ownerStage);
     }
+
+    /** Ctrl+F handler: move focus to the address/ZIP text filter. */
+    public void focusSearch() {
+        if (tfFilter != null) tfFilter.requestFocus();
+    }
+
+    /** Ctrl+N handler: open the "New pickup point" dialog. */
+    public void openNewPickupPoint() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("New Pickup Point");
+        alert.setHeaderText("Create a pickup point");
+        alert.setContentText(
+            "Pickup points are created per community. Use the "
+                + "Admin > Pickup Points screen or POST /api/pickup-points to add one.");
+        alert.show();
+    }
 }

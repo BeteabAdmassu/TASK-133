@@ -1,5 +1,7 @@
 package com.eaglepoint.console.ui.pickup;
 
+import com.eaglepoint.console.ui.reports.ReportsWindow;
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.layout.VBox;
@@ -31,6 +33,11 @@ public class PickupPointWindow {
             Scene scene = new Scene(root, 1000, 700);
             scene.getStylesheets().add(
                 PickupPointWindow.class.getResource("/css/application.css").toExternalForm());
+
+            GlobalShortcuts.install(scene, stage,
+                ctrl::focusSearch,
+                ctrl::openNewPickupPoint,
+                () -> ReportsWindow.show(stage));
 
             stage.setScene(scene);
             stage.show();

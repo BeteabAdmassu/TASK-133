@@ -40,8 +40,9 @@ public class SystemRoutes {
 
         app.get("/api/audit-trail", ctx -> {
             AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "AUDITOR");
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             String entityType = ctx.queryParam("entityType");
             Long entityId = ctx.queryParam("entityId") != null ? Long.parseLong(ctx.queryParam("entityId")) : null;
             ctx.json(PagedResponse.of(auditRepo.findAll(entityType, entityId, null, null, null, page, pageSize)));
@@ -49,8 +50,9 @@ public class SystemRoutes {
 
         app.get("/api/logs", ctx -> {
             AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "AUDITOR");
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             String level = ctx.queryParam("level");
             String category = ctx.queryParam("category");
             ctx.json(PagedResponse.of(logRepo.findAll(level, category, null, null, page, pageSize)));

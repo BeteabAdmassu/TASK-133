@@ -32,9 +32,24 @@ public class ExportRoutes {
         });
 
         app.get("/api/exports/{id}", ctx -> {
-            AuthMiddleware.getCurrentUser(ctx);
+            User user = AuthMiddleware.getCurrentUser(ctx);
             long id = Long.parseLong(ctx.pathParam("id"));
-            ctx.json(Map.of("export", exportService.getExportJob(id)));
+            var job = exportService.getExportJob(id);
+            // Object-level authorization: only the user who initiated the
+            // export OR a system admin (incident/audit-review access) may
+            // view another user's export job.  AUDITOR is explicitly not
+            // allowed cross-user visibility here — their read access is to
+            // audit trail endpoints, not other users' export artefacts.
+            boolean isOwner = job.getInitiatedBy() == user.getId();
+            boolean isAdmin = "SYSTEM_ADMIN".equals(user.getRole());
+            if (!isOwner && !isAdmin) {
+                ctx.status(403).json(Map.of("error", Map.of(
+                    "code", "FORBIDDEN",
+                    "message", "You do not have access to this export job"
+                )));
+                return;
+            }
+            ctx.json(Map.of("export", job));
         });
     }
 }

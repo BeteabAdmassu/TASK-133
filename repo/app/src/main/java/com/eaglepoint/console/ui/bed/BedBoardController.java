@@ -174,6 +174,22 @@ public class BedBoardController {
         if (autoRefresh != null) autoRefresh.stop();
     }
 
+    /** Ctrl+F handler: move keyboard focus to the filter text field. */
+    public void focusSearch() {
+        if (tfFilter != null) tfFilter.requestFocus();
+    }
+
+    /** Ctrl+N handler: bed creation happens via admin tools; surface that clearly. */
+    public void openNewBed() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("New Bed");
+        alert.setHeaderText("Create a new bed record");
+        alert.setContentText(
+            "Beds are created under a specific room. Use the Admin > Beds screen "
+                + "or POST /api/beds to add a new bed to the selected room.");
+        alert.show();
+    }
+
     @FXML private void onRefresh() { loadBeds(); }
     @FXML private void onApplyFilter() { renderGrid(); }
     @FXML private void onClearFilter() {

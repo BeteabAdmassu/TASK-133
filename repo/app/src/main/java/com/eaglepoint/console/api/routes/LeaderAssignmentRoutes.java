@@ -13,8 +13,9 @@ public class LeaderAssignmentRoutes {
     public static void register(Javalin app, LeaderAssignmentService service) {
         app.get("/api/leader-assignments", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(service.listAssignments(page, pageSize)));
         });
 

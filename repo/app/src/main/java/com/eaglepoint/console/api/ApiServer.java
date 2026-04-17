@@ -51,7 +51,7 @@ public class ApiServer {
         var notificationService = NotificationService.getInstance();
         var tokenService = new com.eaglepoint.console.security.TokenService();
         var authService = new AuthService(userRepo, tokenRepo, tokenService);
-        var userService = new UserService(userRepo, SecurityConfig.getInstance());
+        var userService = new UserService(userRepo, tokenRepo, SecurityConfig.getInstance());
         var communityService = new CommunityService(communityRepo, auditService);
         var geozoneService = new GeozoneService(geozoneRepo);
         var serviceAreaService = new ServiceAreaService(serviceAreaRepo, communityRepo, auditService);
@@ -60,7 +60,7 @@ public class ApiServer {
             SecurityConfig.getInstance(), auditService);
         var leaderService = new LeaderAssignmentService(leaderRepo, userRepo, serviceAreaRepo, auditService);
         var evalService = new EvaluationService(evalRepo, auditService);
-        var reviewService = new ReviewService(evalRepo, auditService);
+        var reviewService = new ReviewService(evalRepo, userRepo, auditService);
         var appealService = new AppealService(evalRepo, auditService);
         var bedService = new BedService(bedRepo, SecurityConfig.getInstance(), auditService);
         var routeImportService = new RouteImportService(routeImportRepo, notificationService, auditService);
@@ -86,7 +86,7 @@ public class ApiServer {
         // start() is idempotent so repeated entry-point calls (HeadlessEntryPoint, App)
         // and test harness usage all behave predictably.
         var jobScheduler = JobScheduler.getInstance();
-        jobScheduler.init(scheduledJobRepo, pickupPointService);
+        jobScheduler.init(scheduledJobRepo, pickupPointService, exportService);
         jobScheduler.start();
 
         app = Javalin.create(config -> {

@@ -6,16 +6,32 @@ import com.eaglepoint.console.exception.NotFoundException;
 import com.eaglepoint.console.exception.ValidationException;
 import com.eaglepoint.console.model.PagedResult;
 import com.eaglepoint.console.model.Review;
+import com.eaglepoint.console.model.User;
 import com.eaglepoint.console.repository.EvaluationRepository;
+import com.eaglepoint.console.repository.UserRepository;
 
 import java.time.Instant;
+import java.util.Set;
 
 public class ReviewService {
+    /**
+     * Business rule from the prompt: "re-reviews require a second expert reviewer."
+     * We accept REVIEWER as the baseline "expert reviewer" role; SYSTEM_ADMIN is
+     * also permitted because an admin can always stand in during incidents.
+     */
+    private static final Set<String> SECOND_REVIEWER_ROLES = Set.of("REVIEWER", "SYSTEM_ADMIN");
+
     private final EvaluationRepository evalRepo;
+    private final UserRepository userRepo;
     private final AuditService auditService;
 
     public ReviewService(EvaluationRepository evalRepo, AuditService auditService) {
+        this(evalRepo, null, auditService);
+    }
+
+    public ReviewService(EvaluationRepository evalRepo, UserRepository userRepo, AuditService auditService) {
         this.evalRepo = evalRepo;
+        this.userRepo = userRepo;
         this.auditService = auditService;
     }
 
@@ -129,6 +145,21 @@ public class ReviewService {
         Review r = evalRepo.findReviewById(reviewId).orElseThrow(() -> new NotFoundException("Review", reviewId));
         if (secondReviewerId == r.getReviewerId()) {
             throw new ValidationException("reviewerId", "Second reviewer cannot be the same as the original reviewer");
+        }
+        // Enforce the re-review role rule: the candidate must exist, be
+        // active, and carry an approved second-reviewer role.
+        if (userRepo != null) {
+            User candidate = userRepo.findById(secondReviewerId)
+                .orElseThrow(() -> new NotFoundException("User", secondReviewerId));
+            if (!candidate.isActive()) {
+                throw new ValidationException("reviewerId",
+                    "Second reviewer account is deactivated");
+            }
+            if (!SECOND_REVIEWER_ROLES.contains(candidate.getRole())) {
+                throw new ValidationException("reviewerId",
+                    "Second reviewer must have the REVIEWER role (or SYSTEM_ADMIN), got: "
+                        + candidate.getRole());
+            }
         }
         r.setSecondReviewerId(secondReviewerId);
         r.setStatus("IN_REVIEW");

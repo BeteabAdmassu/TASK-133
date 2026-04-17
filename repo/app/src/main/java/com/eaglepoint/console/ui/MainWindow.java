@@ -5,15 +5,13 @@ import com.eaglepoint.console.ui.evaluation.EvaluationWindow;
 import com.eaglepoint.console.ui.kpi.KpiReviewWindow;
 import com.eaglepoint.console.ui.pickup.PickupPointWindow;
 import com.eaglepoint.console.ui.reports.ReportsWindow;
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
@@ -55,11 +53,16 @@ public class MainWindow {
             monitor.installOnScene(scene);
             monitor.start(LockScreenController::show);
 
-            // Ctrl+L => log viewer
-            scene.getAccelerators().put(
-                new KeyCodeCombination(KeyCode.L, KeyCombination.CONTROL_DOWN),
-                () -> LogViewerDialog.show(primaryStage)
-            );
+            // Install the four global shortcuts (Ctrl+F/N/E/L).  From the
+            // main shell Ctrl+N opens the most common "new" action
+            // (Reports), Ctrl+E exports from the reports window, and Ctrl+F
+            // focuses the tile grid — each child window re-binds these to
+            // window-local handlers via GlobalShortcuts.install().
+            GlobalShortcuts.install(scene, primaryStage,
+                () -> ctrl.btnKpiReview.requestFocus(),
+                () -> ReportsWindow.show(primaryStage),
+                () -> ReportsWindow.show(primaryStage),
+                () -> LogViewerDialog.show(primaryStage));
 
             // System tray
             SystemTrayManager tray = SystemTrayManager.getInstance();

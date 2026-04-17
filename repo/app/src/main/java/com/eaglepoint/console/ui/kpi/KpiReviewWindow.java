@@ -1,10 +1,8 @@
 package com.eaglepoint.console.ui.kpi;
 
+import com.eaglepoint.console.ui.shared.GlobalShortcuts;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
@@ -34,15 +32,10 @@ public class KpiReviewWindow {
             Scene scene = new Scene(root, 1000, 700);
             scene.getStylesheets().add(
                 KpiReviewWindow.class.getResource("/css/application.css").toExternalForm());
-            scene.getAccelerators().put(
-                new KeyCodeCombination(KeyCode.N, KeyCombination.CONTROL_DOWN),
-                ctrl::onNewScore);
-            scene.getAccelerators().put(
-                new KeyCodeCombination(KeyCode.E, KeyCombination.CONTROL_DOWN),
+            GlobalShortcuts.install(scene, stage,
+                ctrl::focusSearch,
+                ctrl::onNewScore,
                 ctrl::onExport);
-            scene.getAccelerators().put(
-                new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN),
-                () -> {/* focus filter - handled in controller */});
 
             stage.setScene(scene);
             stage.show();

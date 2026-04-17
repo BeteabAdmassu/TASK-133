@@ -16,8 +16,9 @@ public class BedRoutes {
         // --- Bed Buildings ---
         app.get("/api/bed-buildings", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(bedService.listBuildings(page, pageSize)));
         });
 
@@ -58,8 +59,9 @@ public class BedRoutes {
         // --- Bed Rooms ---
         app.get("/api/rooms", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             Long buildingId = ctx.queryParam("buildingId") != null ? Long.parseLong(ctx.queryParam("buildingId")) : null;
             ctx.json(PagedResponse.of(bedService.listRoomsPaged(buildingId, page, pageSize)));
         });
@@ -103,8 +105,9 @@ public class BedRoutes {
         // --- Beds ---
         app.get("/api/beds", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             Long roomId = ctx.queryParam("roomId") != null ? Long.parseLong(ctx.queryParam("roomId")) : null;
             Long buildingId = ctx.queryParam("buildingId") != null ? Long.parseLong(ctx.queryParam("buildingId")) : null;
             String stateFilter = ctx.queryParam("state");
@@ -167,8 +170,9 @@ public class BedRoutes {
         app.get("/api/beds/{id}/history", ctx -> {
             AuthMiddleware.getCurrentUser(ctx);
             long id = Long.parseLong(ctx.pathParam("id"));
-            int page = Integer.parseInt(ctx.queryParamAsClass("page", String.class).getOrDefault("1"));
-            int pageSize = Math.min(Integer.parseInt(ctx.queryParamAsClass("pageSize", String.class).getOrDefault("50")), 500);
+            var __p = PaginationParams.from(ctx);
+            int page = __p.page;
+            int pageSize = __p.pageSize;
             ctx.json(PagedResponse.of(bedService.getBedHistoryPaged(id, page, pageSize)));
         });
     }

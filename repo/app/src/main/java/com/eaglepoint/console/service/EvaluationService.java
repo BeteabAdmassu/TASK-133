@@ -155,11 +155,46 @@ public class EvaluationService {
 
     // ─── Scorecard ───
 
+    /**
+     * Tolerance used when validating "weights must total 100.00".  0.01 is
+     * small enough to reject 99.9/100.1 but wide enough to survive
+     * floating-point rounding when the UI stores 33.33/33.33/33.34 and the
+     * database sum comes back as 99.99999999999999.
+     */
+    private static final double WEIGHT_SUM_EPSILON = 0.01;
+
+    /**
+     * Verify that a scorecard template is ready to be used — at least one
+     * metric defined and the weights must total exactly 100.0 (within an
+     * epsilon to tolerate float rounding, but NOT wide enough to accept
+     * 99.9 or 100.1).  Called at scorecard creation (template "usage" is
+     * the strict checkpoint) but also exposed so callers can validate a
+     * template before marking it ready.
+     */
+    public void assertTemplateWeightsFinalized(long templateId) {
+        evalRepo.findTemplateById(templateId)
+            .orElseThrow(() -> new NotFoundException("ScorecardTemplate", templateId));
+        List<ScorecardMetric> metrics = evalRepo.findMetricsByTemplate(templateId);
+        if (metrics.isEmpty()) {
+            throw new ValidationException("metrics",
+                "Template has no metrics defined");
+        }
+        double sum = evalRepo.sumWeightsByTemplate(templateId);
+        if (Math.abs(sum - 100.0) > WEIGHT_SUM_EPSILON) {
+            throw new ValidationException("weights",
+                "Template weights must total exactly 100.0 (got " + sum + ")");
+        }
+    }
+
     public Scorecard createScorecard(long cycleId, long templateId, long evaluateeId, long evaluatorId) {
         EvaluationCycle cycle = evalRepo.findCycleById(cycleId)
             .orElseThrow(() -> new NotFoundException("EvaluationCycle", cycleId));
         ScorecardTemplate template = evalRepo.findTemplateById(templateId)
             .orElseThrow(() -> new NotFoundException("ScorecardTemplate", templateId));
+        // A template is "used" when the first scorecard is created from it.
+        // The business rule is that weights MUST sum to exactly 100 at this
+        // point — <= 100 alone lets half-configured templates leak through.
+        assertTemplateWeightsFinalized(templateId);
         Scorecard s = new Scorecard();
         s.setCycleId(cycleId);
         s.setTemplateId(templateId);
