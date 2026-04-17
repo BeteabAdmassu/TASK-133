@@ -20,10 +20,14 @@ RUN apk add --no-cache maven && \
 # Build headless fat JAR (excludes JavaFX)
 RUN mvn package -DskipTests -q -P headless
 
-# Test stage — runs mvn test when invoked via `docker build --target tests`
+# Test stage — runs mvn test when invoked via `docker build --target tests`.
+# The seed key matches the Base64 AES-256 key used to generate the ciphertext
+# baked into V2__seed_admin_user.sql so staff_id_encrypted rows decrypt cleanly
+# on first boot.  Must stay in sync with docker-compose.yml and
+# BaseIntegrationTest.
 FROM builder AS tests
 ENV APP_HEADLESS=true \
-    APP_TEST_ENC_KEY=dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ==
+    APP_TEST_ENC_KEY=ZWFnbGVwb2ludC1jb25zb2xlLXNlZWQta2V5LXYxISE=
 CMD ["mvn", "test", "-q", "--no-transfer-progress"]
 
 # Stage 2 — Runtime

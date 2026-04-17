@@ -23,13 +23,23 @@ public class SecurityConfig {
     }
 
     private void loadKey(boolean headless) {
-        // On Linux/headless: use env var or generate in-memory key
-        String testKey = System.getenv("APP_TEST_ENC_KEY");
-        if (testKey != null && !testKey.isEmpty()) {
-            byte[] decoded = Base64.getDecoder().decode(testKey);
-            if (decoded.length == 32) {
-                this.encryptionKey = decoded;
-                return;
+        // On Linux/headless: accept the seed key from either the environment
+        // (docker-compose, launch scripts) or a JVM system property (tests).
+        // Check both sources and accept the first one that decodes to exactly
+        // a 32-byte AES-256 key — skip invalid values so downstream fallbacks
+        // still work.
+        for (String candidate : new String[] {
+                System.getenv("APP_TEST_ENC_KEY"),
+                System.getProperty("APP_TEST_ENC_KEY") }) {
+            if (candidate == null || candidate.isEmpty()) continue;
+            try {
+                byte[] decoded = Base64.getDecoder().decode(candidate);
+                if (decoded.length == 32) {
+                    this.encryptionKey = decoded;
+                    return;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Malformed Base64 — try next source.
             }
         }
 

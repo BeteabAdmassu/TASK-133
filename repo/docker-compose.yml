@@ -14,7 +14,12 @@ services:
       DB_PATH: "/app/data/console.db"
       BACKUP_DIR: "/app/data/backups"
       LOG_DIR: "/app/logs"
-      APP_TEST_ENC_KEY: "dGVzdC1rZXktMzItYnl0ZXMtbG9uZy10ZXN0IQ=="
+      # 32-byte base64 AES-256 seed key.  Matches the ciphertext baked into
+      # V2__seed_admin_user.sql so staff_id_encrypted values decrypt cleanly
+      # on first boot.  Override in a real deployment with Windows DPAPI or
+      # an operator-controlled key; SeedEncryptionService will re-encrypt
+      # seeded rows under the new key on the next boot.
+      APP_TEST_ENC_KEY: "ZWFnbGVwb2ludC1jb25zb2xlLXNlZWQta2V5LXYxISE="
     volumes:
       - console_data:/app/data
       - console_logs:/app/logs

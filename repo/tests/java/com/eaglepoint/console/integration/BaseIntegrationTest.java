@@ -53,8 +53,9 @@ public abstract class BaseIntegrationTest {
         System.setProperty("app.headless", "true");
         System.setProperty("api.port", String.valueOf(TEST_PORT));
         System.setProperty("db.path", ":memory:");
+        // 32-byte AES key matching V2__seed_admin_user.sql ciphertext.
         System.setProperty("APP_TEST_ENC_KEY",
-            "dGVzdC1rZXktMzItYnl0ZXMtbG9uZy0hISE=");
+            "ZWFnbGVwb2ludC1jb25zb2xlLXNlZWQta2V5LXYxISE=");
         // Tests share a single JVM/server, so a 60/min business limit is far
         // too tight for hundreds of HTTP calls across the suite.  The live
         // container still uses the default 60/min — this override only affects
