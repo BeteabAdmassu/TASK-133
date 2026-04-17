@@ -8,10 +8,25 @@ import java.util.Deque;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RateLimiter {
-    private static final int MAX_REQUESTS = 60;
+    /**
+     * Default production rate limit: 60 requests per minute per user (business rule).
+     * May be overridden for tests via the {@code RATE_LIMIT_MAX} env var or
+     * {@code rate.limit.max} system property.  The production deployment does
+     * not set these, so the rule remains 60/min in live use.
+     */
+    private static final int MAX_REQUESTS = resolveLimit();
     private static final long WINDOW_MILLIS = 60_000;
 
     private final ConcurrentHashMap<Long, Deque<Long>> requestTimestamps = new ConcurrentHashMap<>();
+
+    private static int resolveLimit() {
+        String prop = System.getProperty("rate.limit.max");
+        if (prop == null || prop.isBlank()) prop = System.getenv("RATE_LIMIT_MAX");
+        if (prop != null && !prop.isBlank()) {
+            try { return Integer.parseInt(prop.trim()); } catch (NumberFormatException ignored) {}
+        }
+        return 60;
+    }
 
     public Handler handle() {
         return ctx -> {

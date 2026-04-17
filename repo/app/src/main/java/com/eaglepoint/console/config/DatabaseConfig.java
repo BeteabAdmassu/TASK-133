@@ -28,19 +28,33 @@ public class DatabaseConfig {
     public synchronized DataSource getDataSource() {
         if (dataSource == null) {
             String dbPath = AppConfig.getInstance().getDbPath();
-            // Ensure parent directory exists
-            File dbFile = new File(dbPath);
-            if (dbFile.getParentFile() != null) {
-                dbFile.getParentFile().mkdirs();
+            boolean inMemory = ":memory:".equals(dbPath);
+
+            if (!inMemory) {
+                // Ensure parent directory exists for file-backed databases
+                File dbFile = new File(dbPath);
+                if (dbFile.getParentFile() != null) {
+                    dbFile.getParentFile().mkdirs();
+                }
             }
 
             HikariConfig config = new HikariConfig();
             config.setJdbcUrl("jdbc:sqlite:" + dbPath);
             config.setDriverClassName("org.sqlite.JDBC");
-            config.setMaximumPoolSize(5);
-            config.setConnectionInitSql(
-                "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;"
-            );
+            if (inMemory) {
+                // SQLite :memory: is per-connection — if we let the pool open
+                // multiple connections, each one sees an empty, untouched DB.
+                // Pinning the pool to a single persistent connection keeps the
+                // migrated schema and seeded rows visible to every query.
+                config.setMaximumPoolSize(1);
+                config.setMinimumIdle(1);
+                config.setConnectionInitSql("PRAGMA foreign_keys=ON;");
+            } else {
+                config.setMaximumPoolSize(5);
+                config.setConnectionInitSql(
+                    "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;"
+                );
+            }
             config.setConnectionTimeout(30000);
             config.setIdleTimeout(600000);
             config.setMaxLifetime(1800000);

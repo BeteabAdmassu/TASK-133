@@ -69,9 +69,12 @@ public class ApiServer {
         // Middleware instances
         var rateLimiter = new RateLimiter();
 
-        // Start JobScheduler (must be started before we wire routes that reference it)
+        // Start JobScheduler (must be started before we wire routes that reference it).
+        // start() is idempotent so repeated entry-point calls (HeadlessEntryPoint, App)
+        // and test harness usage all behave predictably.
         var jobScheduler = JobScheduler.getInstance();
         jobScheduler.init(scheduledJobRepo, pickupPointService);
+        jobScheduler.start();
 
         app = Javalin.create(config -> {
             config.jsonMapper(new JavalinJackson());

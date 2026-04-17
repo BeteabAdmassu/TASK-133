@@ -10,30 +10,34 @@ import static org.hamcrest.Matchers.*;
 
 class RouteImportApiTest extends BaseIntegrationTest {
 
+    private static final String SAMPLE_CSV =
+        "lat,lon,timestamp,sequence\n" +
+        "37.7749,-122.4194,2024-01-01T10:00:00Z,1\n" +
+        "37.7750,-122.4195,2024-01-01T10:01:00Z,2\n";
+
     @Test
     void listRouteImportsRequiresAuth() {
         given().when().get("/api/route-imports").then().statusCode(401);
     }
 
     @Test
-    void listRouteImportsWithAuthSucceeds() {
+    void listRouteImportsReturnsPagedData() {
         withAdmin()
         .when()
             .get("/api/route-imports")
         .then()
             .statusCode(200)
             .body("data", notNullValue())
-            .body("page", notNullValue());
+            .body("page", notNullValue())
+            .body("totalPages", notNullValue());
     }
 
     @Test
-    void uploadValidCsvSucceeds() throws Exception {
-        String csv = "lat,lon,timestamp,sequence\n37.7749,-122.4194,2024-01-01T10:00:00Z,1\n" +
-                     "37.7750,-122.4195,2024-01-01T10:01:00Z,2\n";
-        byte[] content = csv.getBytes(StandardCharsets.UTF_8);
+    void uploadValidCsvSucceeds() {
+        byte[] content = SAMPLE_CSV.getBytes(StandardCharsets.UTF_8);
 
         given()
-            .header("Authorization", "Bearer " + adminToken)
+            .header("Authorization", "Bearer " + adminToken())
             .contentType("multipart/form-data")
             .multiPart("file", "route.csv", content, "text/csv")
         .when()
@@ -48,7 +52,7 @@ class RouteImportApiTest extends BaseIntegrationTest {
     void uploadWithoutAuthReturns401() {
         given()
             .contentType("multipart/form-data")
-            .multiPart("file", "route.csv", "data".getBytes(), "text/csv")
+            .multiPart("file", "route.csv", SAMPLE_CSV.getBytes(), "text/csv")
         .when()
             .post("/api/route-imports")
         .then()
@@ -56,10 +60,65 @@ class RouteImportApiTest extends BaseIntegrationTest {
     }
 
     @Test
+    void uploadAsAuditorReturns403() {
+        given()
+            .header("Authorization", "Bearer " + tokenFor("AUDITOR"))
+            .contentType("multipart/form-data")
+            .multiPart("file", "route.csv", SAMPLE_CSV.getBytes(), "text/csv")
+        .when()
+            .post("/api/route-imports")
+        .then()
+            .statusCode(403);
+    }
+
+    @Test
+    void uploadWithoutFileReturns400() {
+        given()
+            .header("Authorization", "Bearer " + adminToken())
+            .contentType(ContentType.JSON)
+            .body("{}")
+        .when()
+            .post("/api/route-imports")
+        .then()
+            .statusCode(anyOf(is(400), is(415)));
+    }
+
+    @Test
+    void getImportByIdReturnsImport() {
+        int importId = given()
+            .header("Authorization", "Bearer " + adminToken())
+            .contentType("multipart/form-data")
+            .multiPart("file", "route.csv", SAMPLE_CSV.getBytes(), "text/csv")
+        .when()
+            .post("/api/route-imports")
+        .then()
+            .statusCode(201)
+            .extract().path("import.id");
+
+        withAdmin()
+        .when()
+            .get("/api/route-imports/" + importId)
+        .then()
+            .statusCode(200)
+            .body("import.id", equalTo(importId))
+            .body("import.filename", equalTo("route.csv"));
+    }
+
+    @Test
+    void getImportByIdReturns404WhenMissing() {
+        withAdmin()
+        .when()
+            .get("/api/route-imports/9999999")
+        .then()
+            .statusCode(404)
+            .body("error.code", equalTo("NOT_FOUND"));
+    }
+
+    @Test
     void getCheckpointsForNonExistentImportReturns404() {
         withAdmin()
         .when()
-            .get("/api/route-imports/99999/checkpoints")
+            .get("/api/route-imports/9999999/checkpoints")
         .then()
             .statusCode(404);
     }

@@ -48,6 +48,9 @@ public class JobScheduler {
     }
 
     public void start() throws Exception {
+        if (quartzScheduler != null && quartzScheduler.isStarted()) {
+            return; // idempotent — tests and multiple entry points may call start() more than once
+        }
         Properties props = new Properties();
         props.setProperty("org.quartz.scheduler.instanceName", "ConsoleScheduler");
         props.setProperty("org.quartz.threadPool.threadCount", "3");
