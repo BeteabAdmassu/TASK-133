@@ -1,19 +1,19 @@
-# Delivery Acceptance & Project Architecture Audit (Static-Only, Refresh)
+# Delivery Acceptance & Project Architecture Audit (Static-Only)
 
 ## 1. Verdict
-- Overall conclusion: **Fail**
-- Rationale: major previously identified security/resilience gaps were fixed, but at least one explicit prompt-critical capability still lacks static implementation evidence (offline signed updater + one-click rollback), and scheduled report management remains only partially surfaced.
+- Overall conclusion: **Partial Pass**
+- Rationale: implementation now statically evidences most prompt-critical flows (including signed updater + rollback orchestration, scheduled REPORT job management, object-level auth fixes, resume logic), but some acceptance risk remains from requirement softening and non-deterministic test assertions.
 
 ## 2. Scope and Static Verification Boundary
 - What was reviewed: `repo/README.md`, `docs/api-spec.md`, `repo/app/src/main/java/**`, `repo/app/src/main/resources/db/migrations/**`, `repo/tests/java/**`.
-- What was not reviewed: runtime behavior on Windows 11 desktop sessions, true installer packaging/signing pipeline output, long-haul stability in live 8+ hour use.
-- What was intentionally not executed: app startup, Docker, tests, external services.
-- Manual verification required: high-DPI rendering quality, tray behavior under real OS shell, installer signature validation, rollback UX/functionality.
+- What was not reviewed: runtime behavior on real Windows 11 desktop sessions, real `.msi` execution under production permissions/UAC, long-run 8+ hour stability, real high-DPI rendering.
+- What was intentionally not executed: app startup, tests, Docker, external services.
+- Manual verification required: real `msiexec` success/failure behavior on target OS, system-tray lock timing, keyboard flow ergonomics, and installer rollback on actual deployed versions.
 
 ## 3. Repository / Requirement Mapping Summary
-- Prompt core goal mapped: offline JavaFX operations console + local REST API + SQLite + role-based workflows for KPI/pickup/bed/evaluation/export/governance.
-- Implementation mapped: route layer (`repo/app/src/main/java/com/eaglepoint/console/api/routes/*.java`), services (`repo/app/src/main/java/com/eaglepoint/console/service/*.java`), scheduler (`repo/app/src/main/java/com/eaglepoint/console/scheduler/*.java`), UI windows (`repo/app/src/main/java/com/eaglepoint/console/ui/**`), tests (`repo/tests/java/**`).
-- Highest remaining deltas: updater/rollback lifecycle evidence and full scheduled-report management path exposure.
+- Prompt core goal mapped: offline JavaFX operations console + local REST APIs + SQLite + role-based workflows (KPI, pickup points, bed board, evaluations/reviews/appeals, exports, governance).
+- Mapped implementation areas: route layer (`repo/app/src/main/java/com/eaglepoint/console/api/routes/*.java`), service layer (`repo/app/src/main/java/com/eaglepoint/console/service/*.java`), updater/installer layer (`repo/app/src/main/java/com/eaglepoint/console/service/updater/*.java`), scheduler (`repo/app/src/main/java/com/eaglepoint/console/scheduler/*.java`), tests (`repo/tests/java/**`).
+- Remaining deltas: updater still permits non-installer (`installerType=NONE`) path, and some integration tests are intentionally non-deterministic/loose.
 
 ## 4. Section-by-section Review
 
@@ -21,145 +21,137 @@
 
 #### 1.1 Documentation and static verifiability
 - Conclusion: **Pass**
-- Rationale: startup/test/config docs are concrete and aligned with repo structure; API behavior is now documented with constraints and auth/object rules.
-- Evidence: `repo/README.md:15`, `repo/README.md:67`, `repo/README.md:122`, `docs/api-spec.md:1`, `docs/api-spec.md:31`.
+- Rationale: startup/config/test/API docs are substantial and now include updater + scheduled-job API surfaces with concrete fields and constraints.
+- Evidence: `repo/README.md:259`, `repo/README.md:400`, `repo/README.md:469`, `docs/api-spec.md:189`, `docs/api-spec.md:148`.
 
 #### 1.2 Whether delivered project materially deviates from Prompt
-- Conclusion: **Fail**
-- Rationale: while many prompt-critical fixes landed, explicit offline signed update/rollback requirement still has no static implementation evidence; scheduled report support exists in job execution but management surface is partial.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:109`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:61`, `docs/api-spec.md:148`.
-- Manual verification note: signed `.msi` and one-click rollback remain manual-verification-only until implementation artifacts/pipeline are present.
+- Conclusion: **Partial Pass**
+- Rationale: major prior deviations are fixed (signed update routes, rollback logic, scheduled REPORT CRUD), but updater accepts `installerType=NONE` as valid apply path, which weakens strict `.msi`-first requirement semantics.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:305`, `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:316`, `repo/app/src/main/java/com/eaglepoint/console/service/updater/MsiExecInstallerExecutor.java:51`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:76`.
 
 ### 2. Delivery Completeness
 
 #### 2.1 Core explicit requirements coverage
 - Conclusion: **Partial Pass**
-- Rationale: route-import/export crash-safe resume, object auth, token revocation, exact weight rule, and pagination guard are now implemented; updater/rollback remains unproven/missing statically.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/RouteImportService.java:155`, `repo/app/src/main/java/com/eaglepoint/console/service/ExportService.java:193`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/ExportRoutes.java:43`, `repo/app/src/main/java/com/eaglepoint/console/service/AuthService.java:100`, `repo/app/src/main/java/com/eaglepoint/console/service/EvaluationService.java:174`.
+- Rationale: most explicit requirements are now statically covered (resume, role/token fixes, REPORT scheduling, updater signatures/rollback), with remaining uncertainty in strict enforcement of installer-only update path.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/RouteImportService.java:155`, `repo/app/src/main/java/com/eaglepoint/console/service/ExportService.java:193`, `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:468`, `repo/app/src/main/java/com/eaglepoint/console/service/ScheduledJobService.java:63`.
 
 #### 2.2 End-to-end deliverable (0→1)
-- Conclusion: **Partial Pass**
-- Rationale: repository is product-shaped and largely wired; still incomplete for complete prompt acceptance due missing updater/rollback implementation evidence and limited scheduled-job configuration surface.
-- Evidence: `repo/README.md:71`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:61`, `repo/app/src/main/resources/db/migrations/V2__seed_admin_user.sql:33`.
+- Conclusion: **Pass**
+- Rationale: repo is product-shaped with full modules, migrations, API routes, UI windows, scheduler, updater, and broad tests.
+- Evidence: `repo/README.md:71`, `repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:114`, `repo/app/src/main/resources/db/migrations/V4__update_history_installer_cols.sql:7`.
 
 ### 3. Engineering and Architecture Quality
 
-#### 3.1 Engineering structure and decomposition
+#### 3.1 Structure and module decomposition
 - Conclusion: **Pass**
-- Rationale: modules remain well separated (API/service/repository/scheduler/ui/security/tests) and changes fit existing architecture.
-- Evidence: `repo/README.md:71`, `repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:27`.
+- Rationale: architecture remains cleanly separated (api/service/repository/security/scheduler/ui/updater).
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:27`, `repo/app/src/main/java/com/eaglepoint/console/service/updater/InstallerExecutor.java:22`.
 
 #### 3.2 Maintainability and extensibility
-- Conclusion: **Partial Pass**
-- Rationale: improved via shared pagination helper and reusable shortcut helper; however some UI shortcut actions are placeholders (informational dialogs) rather than true “new record” actions.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/api/routes/PaginationParams.java:27`, `repo/app/src/main/java/com/eaglepoint/console/ui/shared/GlobalShortcuts.java:40`, `repo/app/src/main/java/com/eaglepoint/console/ui/pickup/PickupPointController.java:169`, `repo/app/src/main/java/com/eaglepoint/console/ui/bed/BedBoardController.java:183`.
+- Conclusion: **Pass**
+- Rationale: new updater executor abstraction and scheduled job service validation improve extensibility and testing.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/updater/InstallerExecutorFactory.java:29`, `repo/app/src/main/java/com/eaglepoint/console/service/ScheduledJobService.java:169`.
 
 ### 4. Engineering Details and Professionalism
 
-#### 4.1 Error handling/logging/validation/API design
+#### 4.1 Error handling, logging, validation, API design
 - Conclusion: **Pass**
-- Rationale: improved validation and object authorization are now explicit; logging remains structured with system/business appenders.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/api/routes/PaginationParams.java:32`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/ExportRoutes.java:45`, `repo/app/src/main/java/com/eaglepoint/console/config/LoggingConfig.java:31`.
+- Rationale: structured validation/errors are present across new flows (installer args, cron, configJson), with role/object checks and audit notifications.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/updater/InstallerArgValidator.java:42`, `repo/app/src/main/java/com/eaglepoint/console/service/ScheduledJobService.java:139`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/ExportRoutes.java:45`.
 
 #### 4.2 Product/service shape vs demo
-- Conclusion: **Partial Pass**
-- Rationale: most changed areas are production-grade; outstanding product-level gap is updater/rollback lifecycle support.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/RouteImportService.java:31`, `repo/app/src/main/java/com/eaglepoint/console/service/ExportService.java:29`, `docs/api-spec.md:148`.
+- Conclusion: **Pass**
+- Rationale: previously stubbed areas are now production-shaped implementations with persistence + tests.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/scheduler/jobs/ScheduledReportJob.java:71`, `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:371`.
 
 ### 5. Prompt Understanding and Requirement Fit
 
 #### 5.1 Business goal and semantic fit
 - Conclusion: **Partial Pass**
-- Rationale: implementation now better aligns with core semantics (recusal/re-review rules, one-active pickup invariant, exact metric weights), but prompt’s signed offline update + rollback remains unmet statically.
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/ReviewService.java:149`, `repo/app/src/main/java/com/eaglepoint/console/service/PickupPointService.java:263`, `repo/app/src/main/java/com/eaglepoint/console/service/EvaluationService.java:183`, `docs/api-spec.md:76`.
+- Rationale: semantics are now strongly aligned (second reviewer role rule, one-active pickup invariant, exact 100 weights, updater rollback), but strict installer-only enforcement remains softened by legacy-compatible `NONE` path.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/ReviewService.java:158`, `repo/app/src/main/java/com/eaglepoint/console/service/PickupPointService.java:263`, `repo/app/src/main/java/com/eaglepoint/console/service/EvaluationService.java:183`, `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:305`.
 
-### 6. Aesthetics (frontend-only / full-stack)
+### 6. Aesthetics (frontend-only/full-stack)
 
-#### 6.1 Visual/interaction design quality
+#### 6.1 Visual and interaction quality
 - Conclusion: **Cannot Confirm Statistically**
-- Rationale: static FXML/controller wiring exists, but actual rendering/spacing/interaction polish requires live desktop execution.
-- Evidence: `repo/app/src/main/resources/fxml/main.fxml:6`, `repo/app/src/main/java/com/eaglepoint/console/ui/MainWindow.java:47`.
+- Rationale: static FXML/controller evidence exists, but visual quality and interaction behavior at runtime require manual desktop execution.
+- Evidence: `repo/app/src/main/resources/fxml/main.fxml:6`, `repo/app/src/main/java/com/eaglepoint/console/ui/shared/GlobalShortcuts.java:40`.
 
 ## 5. Issues / Suggestions (Severity-Rated)
 
-### Blocker
-1) **Offline signed update + one-click rollback workflow not implemented (prompt-critical)**
-- Severity: **Blocker**
-- Conclusion: **Fail**
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:109`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:61`, `docs/api-spec.md:76`
-- Impact: explicit acceptance requirement cannot be statically verified; delivery remains incomplete against prompt.
-- Minimum actionable fix: add updater module/artifacts and documented signed-package verification + rollback path (and tests/docs proving static traceability).
-
 ### High
-2) **Scheduled report management surface is partial (execution exists, creation/config path not exposed in API)**
+1) **Updater apply path still permits non-installer mode (`installerType=NONE`)**
 - Severity: **High**
 - Conclusion: **Partial Pass**
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/scheduler/jobs/ScheduledReportJob.java:71`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:61`, `repo/app/src/main/resources/db/migrations/V2__seed_admin_user.sql:33`
-- Impact: operators/integrators may lack a supported path to create/manage REPORT jobs without direct DB intervention.
-- Minimum actionable fix: add API endpoints (and role guards) to create/update scheduled jobs including `REPORT` `config_json` and test them.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:305`, `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:316`
+- Impact: signed package updates can bypass actual `.msi` execution path, weakening strict prompt semantics and rollback reliability expectations.
+- Minimum actionable fix: require `installerType=MSI` for production apply, gate legacy `NONE` only behind explicit test/dev flag.
 
 ### Medium
-3) **Shortcut compliance is consistent, but some Ctrl+N actions are non-transactional placeholders**
+2) **Integration update tests include intentionally non-deterministic assertions**
 - Severity: **Medium**
 - Conclusion: **Partial Pass**
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/ui/shared/GlobalShortcuts.java:50`, `repo/app/src/main/java/com/eaglepoint/console/ui/pickup/PickupPointController.java:169`, `repo/app/src/main/java/com/eaglepoint/console/ui/bed/BedBoardController.java:183`
-- Impact: keyboard-first “new record” requirement is only partially fulfilled for some windows.
-- Minimum actionable fix: wire Ctrl+N to real creation dialogs/workflows (or remove claim from docs for windows where unavailable).
+- Evidence: `repo/tests/java/com/eaglepoint/console/integration/UpdateApiTest.java:56`, `repo/tests/java/com/eaglepoint/console/integration/UpdateInstallerApiTest.java:110`
+- Impact: coverage can pass while masking specific failure causes or shared-state regressions.
+- Minimum actionable fix: isolate updater test state per test and assert deterministic expected outcomes (single exact error reason/status).
 
-4) **Context-menu wording/behavior partially diverges from prompt vocabulary (e.g., transfer bed)**
+3) **Rollback/apply failure behavior leaves promoted files for incident review**
 - Severity: **Medium**
-- Conclusion: **Partial Pass**
-- Evidence: `repo/app/src/main/java/com/eaglepoint/console/ui/shared/ContextMenuFactory.java:17`
-- Impact: traceability to prompt actions is weaker; acceptance reviewers may mark semantic mismatch.
-- Minimum actionable fix: align menu actions/labels and backend operations with prompt terms (e.g., explicit transfer action).
+- Conclusion: **Cannot Confirm Statistically**
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/service/UpdateService.java:398`
+- Impact: if installer fails post-promotion, filesystem state may diverge from installed-state history; operational recovery depends on manual runbook quality.
+- Minimum actionable fix: document and optionally add automatic revert toggle for failed installer runs.
 
 ## 6. Security Review Summary
-- authentication entry points: **Pass** — login/token auth implemented; deactivated users are now rejected and tokens revoked (`repo/app/src/main/java/com/eaglepoint/console/service/AuthService.java:80`, `repo/app/src/main/java/com/eaglepoint/console/service/AuthService.java:100`).
-- route-level authorization: **Pass** — role guards are applied on privileged endpoints (`repo/app/src/main/java/com/eaglepoint/console/api/routes/UserRoutes.java:16`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:62`).
-- object-level authorization: **Pass** — export owner-or-admin guard added (`repo/app/src/main/java/com/eaglepoint/console/api/routes/ExportRoutes.java:43`), review object checks remain in service (`repo/app/src/main/java/com/eaglepoint/console/service/ReviewService.java:104`).
-- function-level authorization: **Pass** — sensitive workflow actions gated + semantic checks for second reviewer role (`repo/app/src/main/java/com/eaglepoint/console/service/ReviewService.java:158`).
-- tenant / user data isolation: **Cannot Confirm Statistically** — repository appears single-tenant local system; full tenant isolation model is not explicit.
-- admin / internal / debug protection: **Pass** — no unguarded admin/debug endpoints found in reviewed routes (`repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:51`).
+- authentication entry points: **Pass** — token validation rejects deactivated users and revokes their tokens (`repo/app/src/main/java/com/eaglepoint/console/service/AuthService.java:100`, `repo/app/src/main/java/com/eaglepoint/console/service/UserService.java:97`).
+- route-level authorization: **Pass** — privileged routes are role-guarded (`repo/app/src/main/java/com/eaglepoint/console/api/routes/SystemRoutes.java:76`, `repo/app/src/main/java/com/eaglepoint/console/api/routes/UpdateRoutes.java:23`).
+- object-level authorization: **Pass** — export owner-or-admin guard enforced (`repo/app/src/main/java/com/eaglepoint/console/api/routes/ExportRoutes.java:43`).
+- function-level authorization: **Pass** — second reviewer must be active and role-valid (`repo/app/src/main/java/com/eaglepoint/console/service/ReviewService.java:158`).
+- tenant / user isolation: **Cannot Confirm Statistically** — system appears single-tenant local deployment; explicit tenant model/isolation not present in reviewed code.
+- admin/internal/debug protection: **Pass** — no unguarded admin/debug endpoints found in reviewed route registrations (`repo/app/src/main/java/com/eaglepoint/console/api/ApiServer.java:114`).
 
 ## 7. Tests and Logging Review
-- Unit tests: **Pass** — new unit tests cover resume logic, deactivation behavior, reviewer role rules, weight rules, scheduler job behavior (`repo/tests/java/com/eaglepoint/console/unit/service/RouteImportResumeTest.java:62`, `repo/tests/java/com/eaglepoint/console/unit/service/ExportServiceResumeTest.java:57`, `repo/tests/java/com/eaglepoint/console/unit/service/ScheduledReportJobTest.java:33`).
-- API/integration tests: **Pass** for newly targeted risks — export object auth, deactivation token invalidation, pagination boundaries, multipart auth are covered (`repo/tests/java/com/eaglepoint/console/integration/ExportObjectAuthApiTest.java:18`, `repo/tests/java/com/eaglepoint/console/integration/DeactivatedUserAuthApiTest.java:18`, `repo/tests/java/com/eaglepoint/console/integration/PaginationBoundaryApiTest.java:14`, `repo/tests/java/com/eaglepoint/console/integration/ApiClientMultipartAuthTest.java:20`).
-- Logging categories/observability: **Pass** — dedicated BUSINESS/SYSTEM appenders and rolling config present (`repo/app/src/main/java/com/eaglepoint/console/config/LoggingConfig.java:31`, `repo/app/src/main/java/com/eaglepoint/console/config/LoggingConfig.java:36`).
-- Sensitive-data leakage risk in logs/responses: **Partial Pass** — masking/encryption posture exists, but static review cannot fully exclude incidental leakage under all runtime errors.
+- Unit tests: **Pass** — strong unit coverage for updater installer logic, validators, scheduling, and business rules.
+- Evidence: `repo/tests/java/com/eaglepoint/console/unit/service/UpdateServiceInstallerTest.java:77`, `repo/tests/java/com/eaglepoint/console/unit/service/InstallerArgValidatorTest.java:20`, `repo/tests/java/com/eaglepoint/console/unit/service/ScheduledJobServiceTest.java:35`.
+- API/integration tests: **Partial Pass** — broad coverage exists including updater endpoints and auth/403 checks, but a few assertions are intentionally loose.
+- Evidence: `repo/tests/java/com/eaglepoint/console/integration/UpdateInstallerApiTest.java:32`, `repo/tests/java/com/eaglepoint/console/integration/ScheduledJobsApiTest.java:26`, `repo/tests/java/com/eaglepoint/console/integration/UpdateApiTest.java:56`.
+- Logging/observability: **Pass** — structured app logging plus update history/audit trail fields for installer exit code and log path.
+- Evidence: `repo/app/src/main/java/com/eaglepoint/console/config/LoggingConfig.java:31`, `repo/app/src/main/java/com/eaglepoint/console/model/UpdateHistoryEntry.java:18`.
+- Sensitive-data leakage risk in logs/responses: **Partial Pass** — masking/encryption posture exists, but runtime redaction completeness across all exceptional paths cannot be fully proven statically.
 
 ## 8. Test Coverage Assessment (Static Audit)
 
 ### 8.1 Test Overview
-- Unit tests exist: JUnit5 + Mockito under `repo/tests/java/com/eaglepoint/console/unit/**`.
+- Unit tests exist: JUnit5/Mockito suites under `repo/tests/java/com/eaglepoint/console/unit/**`.
 - API/integration tests exist: REST-Assured under `repo/tests/java/com/eaglepoint/console/integration/**`.
-- Test framework/config evidence: `repo/app/pom.xml` (JUnit/Mockito/REST-Assured dependencies), `repo/tests/java/com/eaglepoint/console/integration/BaseIntegrationTest.java:21`.
-- Test command documented: `repo/README.md:26`, `repo/README.md:27`.
+- Test framework evidence: dependencies and test sources in `repo/app/pom.xml` and `repo/tests/java/**`.
+- Test entry points documented: `repo/README.md:347` and `repo/run_tests.sh:1`.
 
 ### 8.2 Coverage Mapping Table
 | Requirement / Risk Point | Mapped Test Case(s) | Key Assertion / Fixture / Mock | Coverage Assessment | Gap | Minimum Test Addition |
 |---|---|---|---|---|---|
-| Deactivated token rejection + revocation | `repo/tests/java/com/eaglepoint/console/integration/DeactivatedUserAuthApiTest.java:18`, `repo/tests/java/com/eaglepoint/console/unit/service/AuthServiceDeactivationTest.java:44` | old token returns 401; unit verifies `deleteByUserId` | sufficient | none material | keep regression tests on token model changes |
-| Export object-level authorization | `repo/tests/java/com/eaglepoint/console/integration/ExportObjectAuthApiTest.java:19` | cross-user 403, owner 200, admin 200 | sufficient | none material | add negative test for deactivated owner token |
-| Route-import crash-safe resume | `repo/tests/java/com/eaglepoint/console/unit/service/RouteImportResumeTest.java:62` | resume pointer skips committed rows; checkpoint deletion | basically covered | no true DB transaction/crash fault injection integration test | add integration fault-injection test with real repository/db |
-| Export resume and partial-file cleanup | `repo/tests/java/com/eaglepoint/console/unit/service/ExportServiceResumeTest.java:93` | stale `.part` removed and job resumed | basically covered | async timing-based assertion may be flaky | add deterministic latch-based worker hook test |
-| Scheduled report job execution | `repo/tests/java/com/eaglepoint/console/unit/service/ScheduledReportJobTest.java:33` | invokes `createExportJob`, graceful bad-config handling | basically covered | lacks API-level create/manage REPORT job test | add integration tests once schedule CRUD endpoints exist |
-| Second reviewer role enforcement | `repo/tests/java/com/eaglepoint/console/unit/service/ReviewServiceSecondReviewerTest.java:37` | rejects OPS_MANAGER/inactive; accepts REVIEWER/SYSTEM_ADMIN | sufficient | none material | add integration test via `/assign-second` route |
-| Exact metric weight total=100 | `repo/tests/java/com/eaglepoint/console/unit/service/EvaluationWeightRuleTest.java:42` | rejects 99.9/100.1, accepts 100.0 | sufficient | none material | add API-level negative test for template usage |
-| Pagination boundaries | `repo/tests/java/com/eaglepoint/console/integration/PaginationBoundaryApiTest.java:14` | 400 on invalid page/pageSize and field errors | sufficient | route breadth not exhaustive | add one smoke assertion per major list endpoint |
-| Multipart auth propagation | `repo/tests/java/com/eaglepoint/console/integration/ApiClientMultipartAuthTest.java:20` | multipart call succeeds with token, fails 401 without | sufficient | none material | keep as regression for client refactors |
+| Deactivated token revocation | `repo/tests/java/com/eaglepoint/console/integration/DeactivatedUserAuthApiTest.java:18` | old token gets 401 after deactivation | sufficient | none material | keep regression |
+| Export object-level auth | `repo/tests/java/com/eaglepoint/console/integration/ExportObjectAuthApiTest.java:19` | owner/admin 200, cross-user 403 | sufficient | none material | add deactivated-owner variant |
+| Crash-safe import/export resume | `repo/tests/java/com/eaglepoint/console/unit/service/RouteImportResumeTest.java:62`, `repo/tests/java/com/eaglepoint/console/unit/service/ExportServiceResumeTest.java:57` | checkpoint resume and cleanup behaviors | basically covered | no full process-crash integration fault injection | add DB-backed interruption integration test |
+| Scheduled REPORT CRUD and validation | `repo/tests/java/com/eaglepoint/console/integration/ScheduledJobsApiTest.java:26` | create/update/delete + 400 invalid cron/config | sufficient | none material | add explicit REPORT execution assertion via job trigger |
+| `.msi` signed apply/rollback orchestration | `repo/tests/java/com/eaglepoint/console/unit/service/UpdateServiceInstallerTest.java:77`, `repo/tests/java/com/eaglepoint/console/integration/UpdateInstallerApiTest.java:32` | install/uninstall invocation, exit code persistence, rollback row | basically covered | some integration assertions remain non-deterministic | tighten assertions and isolate state per test |
+| Installer-arg sanitization | `repo/tests/java/com/eaglepoint/console/unit/service/InstallerArgValidatorTest.java:44` | rejects shell metacharacters and bad GUID | sufficient | none material | keep allow-list regression set |
+| Pagination bounds and query validation | `repo/tests/java/com/eaglepoint/console/integration/PaginationBoundaryApiTest.java:14` | 400 with field-specific validation errors | sufficient | route breadth not exhaustive | add one smoke for each major list endpoint |
 
 ### 8.3 Security Coverage Audit
-- authentication: **sufficiently covered** by login/logout + deactivation-token tests.
-- route authorization: **basically covered** by existing admin/role integration suites.
-- object-level authorization: **improved and covered** for exports; review object checks still mostly unit-level.
-- tenant / data isolation: **insufficient / cannot confirm** — no explicit multi-tenant model tests.
-- admin / internal protection: **basically covered** by system-route authorization tests.
+- authentication: **covered** (login/logout/deactivation token invalidation present).
+- route authorization: **covered** for key 401/403 paths.
+- object-level authorization: **covered** for exports and review actions.
+- tenant/data isolation: **cannot confirm** (single-tenant architecture; no tenant test model).
+- admin/internal protection: **covered** for jobs/logs/audit/update admin routes.
 
 ### 8.4 Final Coverage Judgment
 - **Partial Pass**
-- Covered well: fixed high-risk auth/object/pagination/resume behavior.
-- Remaining uncovered-risk boundary: updater/rollback workflow and full REPORT job lifecycle management could still hide severe defects while current tests pass.
+- Covered well: fixed high-risk auth/object checks, scheduler/report CRUD validation, updater signature+installer+rollback paths.
+- Remaining boundary: deterministic confidence is reduced by a few broad assertions and shared-state patterns; severe edge defects could still slip in updater path-state transitions.
 
 ## 9. Final Notes
-- Static evidence shows substantial improvement and closure of most prior blocker/high findings.
-- Acceptance is still blocked by the remaining prompt-critical updater/rollback gap and partial scheduled-report management surface.
+- This is a static-only audit; runtime claims are intentionally limited.
+- The repository shows substantial closure of prior critical gaps and is close to full acceptance; the remaining work is mostly enforcement hardening and test determinism.
