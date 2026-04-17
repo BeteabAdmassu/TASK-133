@@ -41,7 +41,7 @@ echo ""
 
 # ---- Run unit + integration tests inside a test-profile container ----
 echo "Building test image (target=tests)..."
-docker build --target tests -t task-133-app-tests ./app >/dev/null
+docker build --target tests -t task-133-app-tests -f app/Dockerfile . >/dev/null
 echo "Running Maven tests inside test container..."
 if ! docker run --rm task-133-app-tests; then
     echo "FAIL: Maven tests failed"

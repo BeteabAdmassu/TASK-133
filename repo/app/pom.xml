@@ -177,6 +177,9 @@
   </dependencies>
 
   <build>
+    <!-- Tests live in repo/tests/java (consolidated test location per CLAUDE.md) -->
+    <testSourceDirectory>${project.basedir}/../tests/java</testSourceDirectory>
+
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

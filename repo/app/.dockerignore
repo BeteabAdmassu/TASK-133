@@ -1,9 +1,0 @@
-target/
-*.class
-logs/
-*.db
-*.db-wal
-*.db-shm
-.tmp/
-.git/
-*.md

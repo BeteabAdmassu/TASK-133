@@ -3,8 +3,8 @@ name: task-133
 services:
   app:
     build:
-      context: ./app
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: app/Dockerfile
     container_name: task-133-app
     ports:
       - "8080:8080"

@@ -1,11 +1,17 @@
-# Multi-stage build: compile with full JDK, run with slim JRE
+# Multi-stage build: compile with full JDK, run with slim JRE.
+# Build context is the repo root so we can include ../tests alongside ./app.
 # Stage 1 — Build
 FROM eclipse-temurin:21-jdk-alpine AS builder
 
 WORKDIR /build
 
-COPY pom.xml .
-COPY src ./src
+# Copy the app Maven project and the sibling tests directory.
+# The pom.xml declares <testSourceDirectory> as ../tests/java, so the layout
+# inside the image must mirror the repo layout.
+COPY app ./app
+COPY tests ./tests
+
+WORKDIR /build/app
 
 # Download dependencies first (cached layer)
 RUN apk add --no-cache maven && \
@@ -32,7 +38,7 @@ RUN apk add --no-cache wget
 RUN mkdir -p /app/data/backups /app/logs
 
 # Copy headless JAR
-COPY --from=builder /build/target/console-headless.jar /app/console-headless.jar
+COPY --from=builder /build/app/target/console-headless.jar /app/console-headless.jar
 
 # Non-root user for security
 RUN addgroup -S eaglepoint && adduser -S eaglepoint -G eaglepoint && \
