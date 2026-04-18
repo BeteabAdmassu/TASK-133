@@ -123,4 +123,21 @@ public class PickupPointRepository extends BaseRepository {
             this::mapRow, communityId, zipCode
         );
     }
+
+    /**
+     * Returns all ACTIVE pickup points in {@code communityId} that have
+     * {@code manual_override = 1}, ordered by {@code id ASC}.
+     *
+     * <p>The caller selects the first result as the override winner
+     * (lowest id = deterministic tie-break when multiple rows exist).
+     * Because the one-active-per-community-per-day rule allows at most one
+     * ACTIVE pickup point per community, in production this list normally
+     * has zero or one entry; the ordering is the safety net.</p>
+     */
+    public List<PickupPoint> findActiveOverridesByCommunity(long communityId) {
+        return queryList(
+            "SELECT * FROM pickup_points WHERE community_id = ? AND status = 'ACTIVE' AND manual_override = 1 ORDER BY id ASC",
+            this::mapRow, communityId
+        );
+    }
 }

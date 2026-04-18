@@ -415,8 +415,12 @@ Points.
 ### Manual override API
 
 Operators with the `SYSTEM_ADMIN` or `OPS_MANAGER` role can flag a pickup
-point as manually overridden, bypassing the normal ZIP / street-range matching
-algorithm for special cases.
+point as manually overridden. Once set, **the override candidate takes absolute
+precedence over normal geographic matching** — all match requests for that
+community will be routed to the override point regardless of the requested ZIP
+code, street address, or geozone.
+
+#### Setting / clearing an override
 
 ```http
 POST /api/pickup-points/{id}/override
@@ -439,6 +443,46 @@ Response: `{ "pickupPoint": { ... } }` with updated `manualOverride` and `overri
 Every override action is written to the **audit trail** (`entity_type = PickupPoint`,
 `action = OVERRIDE`) with the acting user ID, old values, new values, and the
 override notes. Auditors can review via `GET /api/audit-trail?entityType=PickupPoint`.
+
+#### Override matching precedence
+
+`POST /api/pickup-points/match` resolves pickup points in two ordered passes:
+
+1. **Override pass** — the service queries for ACTIVE pickup points in the
+   requested community that have `manual_override = true`.  If any exist, the
+   one with the **lowest `id`** is returned immediately.  ZIP code, street
+   address, and geozone are **not consulted**.  This pass fires unconditionally
+   for any match request to that community while the override flag is set.
+
+2. **Normal pass** (only when no override candidate exists) — candidates are
+   collected by direct ZIP match or geozone-mediated ZIP match, then filtered
+   by street-range if a leading house number is present.  The first remaining
+   candidate is returned.
+
+**Eligibility constraint**: only `status = 'ACTIVE'` pickup points qualify as
+override candidates.  A `PAUSED` pickup point with `manual_override = true`
+does not fire the override pass; the normal pass runs instead.
+
+**Deterministic tie-break**: if multiple ACTIVE override candidates exist (edge
+case — the one-active-per-day rule normally prevents this), the candidate with
+the **lowest `id`** wins.  This is stable and does not depend on insertion
+order or clock skew.
+
+**Match response extension**: the match endpoint returns a `matchedViaOverride`
+boolean alongside the pickup point to make the routing decision visible to
+callers:
+
+```json
+{
+  "pickupPoint": { "id": 5, "manualOverride": true, "status": "ACTIVE", ... },
+  "matchedViaOverride": true
+}
+```
+
+When `matchedViaOverride = false` the response shape is identical — the field
+is always present.  Every override-driven match is also written to
+`system_logs` (`category = BUSINESS`, `entity_type = PickupPoint`) and is
+readable via `GET /api/logs?category=BUSINESS`.
 
 ---
 

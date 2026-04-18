@@ -87,8 +87,11 @@ public class PickupPointRoutes {
             AuthMiddleware.getCurrentUser(ctx);
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             long communityId = Long.parseLong(body.get("communityId").toString());
-            ctx.json(Map.of("pickupPoint",
-                ppService.matchPickupPoint((String) body.get("zipCode"), (String) body.get("streetAddress"), communityId)
+            var result = ppService.matchPickupPoint(
+                (String) body.get("zipCode"), (String) body.get("streetAddress"), communityId);
+            ctx.json(Map.of(
+                "pickupPoint", result.pickupPoint,
+                "matchedViaOverride", result.matchedViaOverride
             ));
         });
 

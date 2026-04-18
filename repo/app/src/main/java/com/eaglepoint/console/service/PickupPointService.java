@@ -230,27 +230,66 @@ public class PickupPointService {
     }
 
     /**
-     * Resolve a pickup point for a resident address using the community + ZIP +
-     * street-range rules.
+     * Carries the result of a pickup-point match: the matched point and whether
+     * the selection was driven by a manual override rather than geographic rules.
+     */
+    public static final class MatchResult {
+        public final PickupPoint pickupPoint;
+        public final boolean matchedViaOverride;
+
+        MatchResult(PickupPoint pickupPoint, boolean matchedViaOverride) {
+            this.pickupPoint = pickupPoint;
+            this.matchedViaOverride = matchedViaOverride;
+        }
+    }
+
+    /**
+     * Resolve a pickup point for a resident address with override-first precedence.
      *
+     * <h3>Matching order</h3>
      * <ol>
-     *   <li>Verify the community exists.</li>
-     *   <li>Collect candidates from the community's <strong>active</strong>
-     *       pickup points whose {@code zipCode} equals the request ZIP
-     *       <em>or</em> whose attached geozone covers the request ZIP.</li>
-     *   <li>If the caller supplied a street address whose leading house
-     *       number falls inside a candidate's {@code streetRangeStart}..
-     *       {@code streetRangeEnd} range, return that candidate.</li>
-     *   <li>Otherwise return the first candidate (one-active-per-community
-     *       keeps this list small).</li>
+     *   <li><strong>Override pass</strong> — if any ACTIVE pickup point in the
+     *       community has {@code manual_override = true}, the one with the
+     *       <em>lowest id</em> (deterministic tie-break) is returned immediately
+     *       without consulting ZIP, street range, or geozone.  This allows ops
+     *       to force-route all requests to a specific point during incidents or
+     *       reroutes regardless of address geography.</li>
+     *   <li><strong>Normal pass</strong> (only when no override candidate exists):
+     *     <ol type="a">
+     *       <li>Collect ACTIVE candidates whose {@code zip_code} equals the
+     *           request ZIP, or whose geozone covers the request ZIP.</li>
+     *       <li>If the street address contains a leading house number that falls
+     *           inside a candidate's {@code streetRangeStart..streetRangeEnd},
+     *           return that candidate.</li>
+     *       <li>Otherwise return the first candidate.</li>
+     *     </ol>
+     *   </li>
      * </ol>
      *
-     * Throws {@link NotFoundException} if no candidate satisfies the rules.
+     * <p>Eligibility for override: {@code status = 'ACTIVE'} and
+     * {@code manual_override = 1}.  PAUSED or INACTIVE pickup points are
+     * never override candidates.</p>
+     *
+     * @return {@link MatchResult} with the matched point and
+     *         {@code matchedViaOverride=true} when Step 1 fired
+     * @throws NotFoundException if neither pass produces a candidate
      */
-    public PickupPoint matchPickupPoint(String zipCode, String streetAddress, long communityId) {
+    public MatchResult matchPickupPoint(String zipCode, String streetAddress, long communityId) {
         communityRepo.findById(communityId)
             .orElseThrow(() -> new NotFoundException("Community", communityId));
 
+        // Step 1: Override pass — bypasses geographic matching entirely.
+        List<PickupPoint> overrides = ppRepo.findActiveOverridesByCommunity(communityId);
+        if (!overrides.isEmpty()) {
+            PickupPoint winner = overrides.get(0); // lowest id wins; deterministic tie-break
+            syslog("INFO", "BUSINESS",
+                "Match resolved via manual override: pickup point " + winner.getId() +
+                " in community " + communityId,
+                "PickupPoint", winner.getId(), null);
+            return new MatchResult(winner, true);
+        }
+
+        // Step 2: Normal ZIP / street-range / geozone pass.
         List<PickupPoint> candidates = collectActiveCandidates(zipCode, communityId);
         if (candidates.isEmpty()) {
             throw new NotFoundException(
@@ -261,11 +300,11 @@ public class PickupPointService {
         if (streetNumber != null) {
             for (PickupPoint pp : candidates) {
                 if (isInStreetRange(streetNumber, pp.getStreetRangeStart(), pp.getStreetRangeEnd())) {
-                    return pp;
+                    return new MatchResult(pp, false);
                 }
             }
         }
-        return candidates.get(0);
+        return new MatchResult(candidates.get(0), false);
     }
 
     private List<PickupPoint> collectActiveCandidates(String zipCode, long communityId) {
