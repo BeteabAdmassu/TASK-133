@@ -127,7 +127,8 @@ class UpdateServiceTest {
         assertTrue(Files.exists(Path.of(second.getInstalledPath())),
             "New package should be promoted into installed/");
 
-        verify(audit).record(eq("UpdatePackage"), anyLong(), eq("UPDATE_APPLIED"),
+        // Two successful applies → two UPDATE_APPLIED audit entries.
+        verify(audit, times(2)).record(eq("UpdatePackage"), anyLong(), eq("UPDATE_APPLIED"),
             eq(99L), any(), any(), any(), any());
     }
 

@@ -20,11 +20,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class GlobalShortcutsBindingTest {
 
     @Test
-    void installMethodsAccept4And5ArgForms() {
-        Method four = findInstall(4);
+    void installMethodsAccept5And6ArgForms() {
         Method five = findInstall(5);
-        assertNotNull(four, "4-arg install(scene,stage,find,new,export) must exist");
-        assertNotNull(five, "5-arg install(scene,stage,find,new,export,logs) must exist");
+        Method six = findInstall(6);
+        assertNotNull(five, "install(scene,stage,find,new,export) must exist");
+        assertNotNull(six, "install(scene,stage,find,new,export,logs) must exist");
     }
 
     @Test

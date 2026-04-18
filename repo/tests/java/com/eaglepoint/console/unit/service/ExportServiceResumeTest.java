@@ -117,7 +117,9 @@ class ExportServiceResumeTest {
 
         assertFalse(Files.exists(stalePart),
             "Stale .part must be removed before retrying the job");
-        verify(exportRepo).updateCheckpointPath(2L, null);
+        // resumeIncompleteJobs clears the checkpoint before scheduling; then
+        // executeJob clears it again after the retry succeeds.
+        verify(exportRepo, atLeastOnce()).updateCheckpointPath(2L, null);
         verify(exportRepo).updateStarted(2L);
     }
 

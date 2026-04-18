@@ -142,12 +142,24 @@ class RouteImportResumeTest {
     @Test
     void startImportParsesAndCommitsViaCheckpoint() throws Exception {
         long importId = 55L;
-        RouteImport persisted = new RouteImport();
-        persisted.setId(importId);
-        persisted.setStatus("PENDING");
 
-        when(importRepo.insert(any(RouteImport.class))).thenReturn(importId);
-        when(importRepo.findById(importId)).thenReturn(Optional.of(persisted));
+        // Mirror a real repo: when updateCheckpointPath is called, subsequent
+        // findById calls must return an import that carries that path so
+        // commitFromCheckpoint can re-read the checkpoint sidecar.
+        java.util.concurrent.atomic.AtomicReference<String> cpPath =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        doAnswer(inv -> {
+            cpPath.set(inv.getArgument(1));
+            return null;
+        }).when(importRepo).updateCheckpointPath(eq(importId), any());
+
+        when(importRepo.findById(importId)).thenAnswer(inv -> {
+            RouteImport ri = new RouteImport();
+            ri.setId(importId);
+            ri.setStatus("PROCESSING");
+            ri.setCheckpointPath(cpPath.get());
+            return Optional.of(ri);
+        });
         when(importRepo.countCheckpoints(importId)).thenReturn(0);
         when(importRepo.countAlertCheckpoints(importId)).thenReturn(0);
 
@@ -155,11 +167,8 @@ class RouteImportResumeTest {
             + "CP-1,2024-01-01T10:00:00Z,2024-01-01T10:01:00Z,37.7749,-122.4194\n"
             + "CP-2,2024-01-01T10:05:00Z,2024-01-01T10:06:00Z,37.7750,-122.4195\n";
 
-        // Execute the pipeline synchronously by calling validateAndProcess
-        // directly — startImport would hand it to a daemon executor.
         service.validateAndProcess(importId, csv.getBytes(StandardCharsets.UTF_8), false);
 
-        // Checkpoint path should have been set AND then cleared on success.
         verify(importRepo).updateCheckpointPath(eq(importId), argThat(p ->
             p != null && p.contains("import-" + importId)));
         verify(importRepo).updateCheckpointPath(importId, null);
