@@ -23,7 +23,13 @@ INTERVAL=5
 echo "=== Eagle Point Console — Test Runner ==="
 echo ""
 
-# ─── 1. Wait for the live app container to report healthy ────────────────────
+# ─── 1. Start app if not running, then wait for healthy ─────────────────────
+if ! curl -sf "${BACKEND_URL}/api/health" > /dev/null 2>&1; then
+    echo "App not running — starting with docker compose up -d..."
+    docker compose up -d
+    echo ""
+fi
+
 echo "Waiting for app to be healthy (max ${MAX_WAIT}s)..."
 elapsed=0
 until curl -sf "${BACKEND_URL}/api/health" > /dev/null 2>&1; do
