@@ -91,5 +91,17 @@ public class PickupPointRoutes {
                 ppService.matchPickupPoint((String) body.get("zipCode"), (String) body.get("streetAddress"), communityId)
             ));
         });
+
+        app.post("/api/pickup-points/{id}/override", ctx -> {
+            AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "OPS_MANAGER");
+            long id = Long.parseLong(ctx.pathParam("id"));
+            User user = AuthMiddleware.getCurrentUser(ctx);
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            boolean manualOverride = Boolean.TRUE.equals(body.get("manualOverride"));
+            String overrideNotes = body.get("overrideNotes") != null ? body.get("overrideNotes").toString() : null;
+            String traceId = UUID.randomUUID().toString();
+            ctx.json(Map.of("pickupPoint",
+                ppService.applyManualOverride(id, manualOverride, overrideNotes, user.getId(), traceId)));
+        });
     }
 }

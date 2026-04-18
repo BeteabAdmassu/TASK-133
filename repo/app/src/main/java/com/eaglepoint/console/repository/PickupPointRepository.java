@@ -32,6 +32,7 @@ public class PickupPointRepository extends BaseRepository {
         p.setPauseReason(rs.getString("pause_reason"));
         p.setManualOverride(rs.getInt("manual_override") == 1);
         p.setOverrideNotes(rs.getString("override_notes"));
+        p.setActiveDate(rs.getString("active_date"));
         p.setCreatedAt(rs.getString("created_at"));
         p.setUpdatedAt(rs.getString("updated_at"));
         return p;
@@ -59,24 +60,49 @@ public class PickupPointRepository extends BaseRepository {
         ).orElse(0);
     }
 
+    /**
+     * Counts pickup points in a community that are either currently ACTIVE or were
+     * activated on {@code today} (regardless of current status). Used to enforce the
+     * one-active-per-community-per-calendar-day rule when creating a new pickup point.
+     */
+    public int countActiveOrActiveTodayByCommunity(long communityId, String today) {
+        return queryOne(
+            "SELECT COUNT(*) as cnt FROM pickup_points WHERE community_id = ? AND status != 'INACTIVE' AND (status = 'ACTIVE' OR active_date = ?)",
+            rs -> rs.getInt("cnt"), communityId, today
+        ).orElse(0);
+    }
+
+    /**
+     * Same as {@link #countActiveOrActiveTodayByCommunity} but excludes pickup point
+     * {@code excludeId}. Used when resuming a pickup point to avoid blocking the
+     * same point that was already active today from being re-activated.
+     */
+    public int countActiveOrActiveTodayByCommunityExcluding(long communityId, String today, long excludeId) {
+        return queryOne(
+            "SELECT COUNT(*) as cnt FROM pickup_points WHERE community_id = ? AND id != ? AND status != 'INACTIVE' AND (status = 'ACTIVE' OR active_date = ?)",
+            rs -> rs.getInt("cnt"), communityId, excludeId, today
+        ).orElse(0);
+    }
+
     public long insert(PickupPoint p) {
         return insertAndGetId(
-            "INSERT INTO pickup_points (community_id, service_area_id, geozone_id, address_encrypted, zip_code, street_range_start, street_range_end, hours_json, capacity, status, manual_override) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO pickup_points (community_id, service_area_id, geozone_id, address_encrypted, zip_code, street_range_start, street_range_end, hours_json, capacity, status, manual_override, active_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             p.getCommunityId(), p.getServiceAreaId(), p.getGeozoneId(),
             p.getAddressEncrypted(), p.getZipCode(), p.getStreetRangeStart(),
             p.getStreetRangeEnd(), p.getHoursJson(), p.getCapacity(),
             p.getStatus() != null ? p.getStatus() : "ACTIVE",
-            p.isManualOverride() ? 1 : 0
+            p.isManualOverride() ? 1 : 0,
+            p.getActiveDate()
         );
     }
 
     public void update(PickupPoint p) {
         execute(
-            "UPDATE pickup_points SET address_encrypted=?, zip_code=?, street_range_start=?, street_range_end=?, hours_json=?, capacity=?, status=?, paused_until=?, pause_reason=?, manual_override=?, override_notes=?, geozone_id=?, updated_at=datetime('now') WHERE id=?",
+            "UPDATE pickup_points SET address_encrypted=?, zip_code=?, street_range_start=?, street_range_end=?, hours_json=?, capacity=?, status=?, paused_until=?, pause_reason=?, manual_override=?, override_notes=?, geozone_id=?, active_date=?, updated_at=datetime('now') WHERE id=?",
             p.getAddressEncrypted(), p.getZipCode(), p.getStreetRangeStart(),
             p.getStreetRangeEnd(), p.getHoursJson(), p.getCapacity(), p.getStatus(),
             p.getPausedUntil(), p.getPauseReason(), p.isManualOverride() ? 1 : 0,
-            p.getOverrideNotes(), p.getGeozoneId(), p.getId()
+            p.getOverrideNotes(), p.getGeozoneId(), p.getActiveDate(), p.getId()
         );
     }
 

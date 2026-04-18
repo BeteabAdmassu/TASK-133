@@ -23,11 +23,10 @@ public class SecurityConfig {
     }
 
     private void loadKey(boolean headless) {
-        // On Linux/headless: accept the seed key from either the environment
-        // (docker-compose, launch scripts) or a JVM system property (tests).
-        // Check both sources and accept the first one that decodes to exactly
-        // a 32-byte AES-256 key — skip invalid values so downstream fallbacks
-        // still work.
+        // Priority 1 & 2: accept a pre-supplied key from the environment or
+        // a JVM system property (used by Docker/CI and test harnesses).
+        // Both must decode to exactly 32 bytes (AES-256); invalid values are
+        // skipped so the next source is tried.
         for (String candidate : new String[] {
                 System.getenv("APP_TEST_ENC_KEY"),
                 System.getProperty("APP_TEST_ENC_KEY") }) {
@@ -44,9 +43,18 @@ public class SecurityConfig {
         }
 
         if (!headless && isWindows()) {
-            loadFromWindowsKeyStore();
+            // Production Windows path: use DPAPI-backed persistent key storage.
+            // DpapiKeyStorage.loadOrCreate() throws IllegalStateException on any
+            // failure (PowerShell unavailable, DPAPI error, corrupt file, etc.).
+            // We deliberately do NOT catch that exception here; production mode
+            // must fail fast rather than silently generate an ephemeral key that
+            // would make all previously-encrypted fields unreadable after a restart.
+            loadFromDpapi();
         } else {
-            // Generate or use a fixed in-memory key for headless/test mode
+            // Headless / Docker / test mode — generate a session-scoped random key.
+            // In these environments the APP_TEST_ENC_KEY env var should normally
+            // provide a stable key; this fallback is only for unit tests that do
+            // not set that variable.
             generateInMemoryKey();
         }
     }
@@ -55,28 +63,19 @@ public class SecurityConfig {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
 
-    private void loadFromWindowsKeyStore() {
-        try {
-            java.security.KeyStore ks = java.security.KeyStore.getInstance("Windows-MY");
-            ks.load(null, null);
-            String alias = "eaglepoint-console-enc-key";
-            if (ks.containsAlias(alias)) {
-                java.security.Key key = ks.getKey(alias, null);
-                if (key != null) {
-                    this.encryptionKey = key.getEncoded();
-                    return;
-                }
-            }
-            // Generate and store new key
-            byte[] newKey = new byte[32];
-            new SecureRandom().nextBytes(newKey);
-            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(newKey, "AES");
-            ks.setKeyEntry(alias, secretKey, null, null);
-            this.encryptionKey = newKey;
-        } catch (Exception e) {
-            // Fallback to in-memory key if Windows keystore unavailable
-            generateInMemoryKey();
-        }
+    /**
+     * Loads the AES-256 encryption key from DPAPI-backed file storage.
+     *
+     * <p>This replaces the previous Windows-MY (certificate store) approach, which
+     * does not apply Windows DPAPI protection. DPAPI binds the key to the Windows
+     * user identity so it is unreadable outside this machine/user context without
+     * the full credential chain.</p>
+     *
+     * <p>Any failure propagates as {@link IllegalStateException} — there is no
+     * silent fallback to a fresh random key in production mode.</p>
+     */
+    private void loadFromDpapi() {
+        this.encryptionKey = DpapiKeyStorage.loadOrCreate();
     }
 
     private void generateInMemoryKey() {

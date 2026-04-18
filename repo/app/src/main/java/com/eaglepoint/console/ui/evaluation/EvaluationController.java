@@ -98,7 +98,8 @@ public class EvaluationController {
         tableScorecards.setItems(scorecardItems);
         tableScorecards.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
             boolean selected = sel != null;
-            btnSubmitScorecard.setDisable(!selected || !"DRAFT".equals(sel.getOrDefault("status", "")));
+            String scStatus = selected ? String.valueOf(sel.getOrDefault("status", "")) : "";
+            btnSubmitScorecard.setDisable(!selected || (!"PENDING".equals(scStatus) && !"IN_PROGRESS".equals(scStatus)));
             btnRecuse.setDisable(!selected);
         });
         tableScorecards.setRowFactory(tv -> {

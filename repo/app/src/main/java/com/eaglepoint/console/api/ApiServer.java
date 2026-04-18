@@ -49,6 +49,7 @@ public class ApiServer {
 
         // Services
         var auditService = new AuditService(auditRepo);
+        var systemLogService = new com.eaglepoint.console.service.SystemLogService(systemLogRepo);
         var notificationService = NotificationService.getInstance();
         var tokenService = new com.eaglepoint.console.security.TokenService();
         var authService = new AuthService(userRepo, tokenRepo, tokenService);
@@ -58,7 +59,8 @@ public class ApiServer {
         var serviceAreaService = new ServiceAreaService(serviceAreaRepo, communityRepo, auditService);
         var pickupPointService = new PickupPointService(
             pickupPointRepo, communityRepo, geozoneRepo,
-            SecurityConfig.getInstance(), auditService);
+            SecurityConfig.getInstance(), auditService,
+            notificationService, systemLogService);
         var leaderService = new LeaderAssignmentService(leaderRepo, userRepo, serviceAreaRepo, auditService);
         var evalService = new EvaluationService(evalRepo, auditService);
         var reviewService = new ReviewService(evalRepo, userRepo, auditService);

@@ -19,6 +19,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.eq;
 
 /**
  * resumeExpiredPauses must honour the "one active pickup point per
@@ -45,7 +46,7 @@ class PickupPointAutoResumeTest {
     }
 
     @Test
-    void resumeExpiredPausesActivatesWhenCommunityHasNoActivePoint() {
+    void resumeExpiredPausesActivatesWhenCommunityHasNoActivePointToday() {
         PickupPoint pp = new PickupPoint();
         pp.setId(1L);
         pp.setCommunityId(42L);
@@ -53,7 +54,8 @@ class PickupPointAutoResumeTest {
         pp.setPausedUntil("2020-01-01T00:00:00Z");
 
         when(ppRepo.findPausedExpired(anyString())).thenReturn(List.of(pp));
-        when(ppRepo.countActiveByCommunity(42L)).thenReturn(0);
+        // Day-scoped check: no OTHER pickup point was active today
+        when(ppRepo.countActiveOrActiveTodayByCommunityExcluding(eq(42L), anyString(), eq(1L))).thenReturn(0);
 
         service.resumeExpiredPauses();
 
@@ -66,7 +68,7 @@ class PickupPointAutoResumeTest {
     }
 
     @Test
-    void resumeExpiredPausesSkipsWhenCommunityAlreadyHasActivePoint() {
+    void resumeExpiredPausesSkipsWhenAnotherPickupPointWasActiveTodayInSameCommunity() {
         PickupPoint pp = new PickupPoint();
         pp.setId(2L);
         pp.setCommunityId(99L);
@@ -74,7 +76,8 @@ class PickupPointAutoResumeTest {
         pp.setPausedUntil("2020-01-01T00:00:00Z");
 
         when(ppRepo.findPausedExpired(anyString())).thenReturn(List.of(pp));
-        when(ppRepo.countActiveByCommunity(99L)).thenReturn(1); // conflict
+        // Day-scoped check: another pickup point in this community was active today
+        when(ppRepo.countActiveOrActiveTodayByCommunityExcluding(eq(99L), anyString(), eq(2L))).thenReturn(1);
 
         service.resumeExpiredPauses();
 

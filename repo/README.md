@@ -379,7 +379,14 @@ Points.
 
 ## Key Business Rules
 
-- **One ACTIVE pickup point per community** at any time.
+- **One ACTIVE pickup point per community per calendar day (UTC).** The rule
+  is stricter than "concurrent uniqueness": even if a pickup point is paused
+  during the day, no other pickup point may become ACTIVE for the same
+  community on the same UTC calendar date. Resuming the *same* pickup point
+  that was paused earlier today is allowed (self-exclusion). The `active_date`
+  column on `pickup_points` records the UTC date of each ACTIVE transition;
+  the service layer checks this column in create, resume, and auto-resume paths.
+  Violation returns HTTP **409 CONFLICT** with `error.code = CONFLICT`.
 - **Bed state machine**: `OCCUPIED → OUT_OF_SERVICE` is explicitly forbidden; a
   `CLEANING` checkpoint is required.
 - **Appeal deadline**: 7 calendar days from scorecard `submittedAt`; only the
@@ -394,6 +401,44 @@ Points.
   archived monthly.
 - **Encryption**: AES-256-GCM for `staffId`, `residentId`, `address` fields at
   rest; plaintext returned only to `SYSTEM_ADMIN`.
+- **Windows encryption key (production)**: The AES-256 key is loaded from a
+  DPAPI-protected file (`%APPDATA%\EaglePoint\Console\enc-key.bin`) using
+  PowerShell's `System.Security.Cryptography.ProtectedData` (CurrentUser scope).
+  DPAPI binds the ciphertext to the Windows user credentials, preventing offline
+  extraction. If the DPAPI operation fails for any reason (PowerShell unavailable,
+  wrong user context, corrupt file) the application **fails to start** with a
+  clear error message — it does not silently fall back to a fresh random key,
+  which would render all previously-encrypted fields unreadable. In
+  headless/Docker/CI mode the key is read from the `APP_TEST_ENC_KEY` environment
+  variable (Base64-encoded 32 bytes).
+
+### Manual override API
+
+Operators with the `SYSTEM_ADMIN` or `OPS_MANAGER` role can flag a pickup
+point as manually overridden, bypassing the normal ZIP / street-range matching
+algorithm for special cases.
+
+```http
+POST /api/pickup-points/{id}/override
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "manualOverride": true,
+  "overrideNotes": "Temporary reroute due to road closure on Elm St — ops ticket #4892"
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `manualOverride` | boolean | yes | `true` to activate, `false` to clear |
+| `overrideNotes` | string | required when `true` | Max 2 000 chars; recorded in audit trail |
+
+Response: `{ "pickupPoint": { ... } }` with updated `manualOverride` and `overrideNotes` fields.
+
+Every override action is written to the **audit trail** (`entity_type = PickupPoint`,
+`action = OVERRIDE`) with the acting user ID, old values, new values, and the
+override notes. Auditors can review via `GET /api/audit-trail?entityType=PickupPoint`.
 
 ---
 

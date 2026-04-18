@@ -16,6 +16,7 @@ public class PickupPoint {
     private String pauseReason;
     private boolean manualOverride;
     private String overrideNotes;
+    private String activeDate;
     private String createdAt;
     private String updatedAt;
 
@@ -49,6 +50,8 @@ public class PickupPoint {
     public void setManualOverride(boolean manualOverride) { this.manualOverride = manualOverride; }
     public String getOverrideNotes() { return overrideNotes; }
     public void setOverrideNotes(String overrideNotes) { this.overrideNotes = overrideNotes; }
+    public String getActiveDate() { return activeDate; }
+    public void setActiveDate(String activeDate) { this.activeDate = activeDate; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
     public String getUpdatedAt() { return updatedAt; }
