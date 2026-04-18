@@ -86,26 +86,31 @@ public class UpdateService {
     private final NotificationService notificationService;
     private final InstallerExecutor installer;
     private final Duration installerTimeout;
+    /**
+     * When {@code false} (production default), apply rejects any package
+     * whose {@code installerType} is not {@code MSI}.  The legacy
+     * payload-only path is only available when the operator explicitly
+     * opts in via {@code -Dupdater.allow.non.msi=true} or
+     * {@code UPDATER_ALLOW_NON_MSI=true}.
+     */
+    private final boolean allowNonMsi;
 
     public UpdateService(UpdateSignatureVerifier verifier,
                          UpdateHistoryRepository historyRepo,
                          AuditService auditService,
                          NotificationService notificationService) {
         this(defaultRoot(), verifier, historyRepo, auditService, notificationService,
-            InstallerExecutorFactory.resolve(), Duration.ofMinutes(15));
+            InstallerExecutorFactory.resolve(), Duration.ofMinutes(15), resolveAllowNonMsi());
     }
 
-    /**
-     * Backwards-compatible overload used by legacy unit tests — picks the
-     * installer executor the same way the no-path constructor does.
-     */
+    /** Backwards-compatible overload — installer picked via factory, strict-MSI from env/sysprop. */
     public UpdateService(Path root,
                          UpdateSignatureVerifier verifier,
                          UpdateHistoryRepository historyRepo,
                          AuditService auditService,
                          NotificationService notificationService) {
         this(root, verifier, historyRepo, auditService, notificationService,
-            InstallerExecutorFactory.resolve(), Duration.ofMinutes(15));
+            InstallerExecutorFactory.resolve(), Duration.ofMinutes(15), resolveAllowNonMsi());
     }
 
     public UpdateService(Path root,
@@ -115,7 +120,7 @@ public class UpdateService {
                          NotificationService notificationService,
                          InstallerExecutor installer) {
         this(root, verifier, historyRepo, auditService, notificationService,
-            installer, Duration.ofMinutes(15));
+            installer, Duration.ofMinutes(15), resolveAllowNonMsi());
     }
 
     public UpdateService(Path root,
@@ -125,6 +130,18 @@ public class UpdateService {
                          NotificationService notificationService,
                          InstallerExecutor installer,
                          Duration installerTimeout) {
+        this(root, verifier, historyRepo, auditService, notificationService,
+            installer, installerTimeout, resolveAllowNonMsi());
+    }
+
+    public UpdateService(Path root,
+                         UpdateSignatureVerifier verifier,
+                         UpdateHistoryRepository historyRepo,
+                         AuditService auditService,
+                         NotificationService notificationService,
+                         InstallerExecutor installer,
+                         Duration installerTimeout,
+                         boolean allowNonMsi) {
         this.incomingDir  = root.resolve("incoming");
         this.installedDir = root.resolve("installed");
         this.backupsDir   = root.resolve("backups");
@@ -135,6 +152,11 @@ public class UpdateService {
         this.notificationService = notificationService;
         this.installer = installer;
         this.installerTimeout = installerTimeout;
+        this.allowNonMsi = allowNonMsi;
+        if (allowNonMsi) {
+            log.warn("UpdateService is running with allowNonMsi=true — NON-MSI packages will be accepted. "
+                + "This override must only be used for dev/CI, not production.");
+        }
         try {
             Files.createDirectories(incomingDir);
             Files.createDirectories(installedDir);
@@ -143,6 +165,21 @@ public class UpdateService {
         } catch (IOException e) {
             log.warn("Could not create updater directories under {}: {}", root, e.getMessage());
         }
+    }
+
+    /** Recovery-state constants persisted on failed apply rows. */
+    public static final String RECOVERY_AUTO_REVERTED = "AUTO_REVERTED";
+    public static final String RECOVERY_NEEDS_MANUAL  = "NEEDS_MANUAL_RECOVERY";
+
+    /**
+     * Reads {@code updater.allow.non.msi} sysprop (then
+     * {@code UPDATER_ALLOW_NON_MSI} env var).  Default is {@code false}
+     * so a production container is strict-MSI out-of-the-box.
+     */
+    static boolean resolveAllowNonMsi() {
+        String prop = System.getProperty("updater.allow.non.msi");
+        if (prop == null || prop.isBlank()) prop = System.getenv("UPDATER_ALLOW_NON_MSI");
+        return "true".equalsIgnoreCase(prop == null ? "" : prop.trim());
     }
 
     private static Path defaultRoot() {
@@ -298,9 +335,12 @@ public class UpdateService {
         }
 
         // 2. Manifest is cryptographically valid — now validate installer
-        //    semantics.  A missing installerType is treated as NONE (legacy
-        //    payload-only packages), retained for backwards compatibility
-        //    with the V3-era apply path.
+        //    semantics.  Production apply is strict-MSI: a missing or
+        //    non-MSI installerType is rejected with MANIFEST_INVALID unless
+        //    the operator has explicitly opted in to the legacy path via
+        //    updater.allow.non.msi / UPDATER_ALLOW_NON_MSI.  That override
+        //    is intended for CI / dev only and is NEVER set in production
+        //    containers.
         UpdatePackage.Manifest manifest = pkg.getManifest();
         String installerType = manifest.getInstallerType() == null ? "NONE" : manifest.getInstallerType();
         List<String> properties;
@@ -313,9 +353,17 @@ public class UpdateService {
                 if (manifest.getProductCode() != null) {
                     InstallerArgValidator.validateProductCode(manifest.getProductCode());
                 }
-            } else if (!"NONE".equals(installerType)) {
+            } else if ("NONE".equals(installerType)) {
+                if (!allowNonMsi) {
+                    throw new ValidationException("installerType",
+                        "Production apply requires installerType=MSI; got NONE. "
+                            + "Set updater.allow.non.msi=true only for dev/CI.");
+                }
+            } else {
+                // Anything else (EXE, legacy strings, typos) is a hard reject
+                // — strict-MSI means the wire protocol is closed.
                 throw new ValidationException("installerType",
-                    "installerType must be MSI or NONE (got " + installerType + ")");
+                    "Unsupported installerType '" + installerType + "' (allowed: MSI)");
             }
             properties = InstallerArgValidator.sanitize(manifest.getInstallArgs());
         } catch (ValidationException ve) {
@@ -374,18 +422,27 @@ public class UpdateService {
                 String detail = "installer exit=" + run.getExitCode()
                     + ", mode=" + installer.mode() + ", log=" + logFile;
                 log.error("Installer failed for {}: {}", packageName, detail);
+                // AUTO-REVERT: the filesystem was already promoted to the new
+                // package before msiexec ran.  A failed installer leaves that
+                // tree half-installed, so we actively delete it and move the
+                // prior backup back into installed/ so the machine is not left
+                // in limbo.  We persist the recoveryState so operators can
+                // audit what happened without having to walk the filesystem.
+                String recoveryState = attemptAutoRevert(installTarget, backupPath);
+
                 UpdateHistoryEntry failed = recordHistory(pkg,
                     manifest.getPayloadSha256(),
                     "FAILED", "FAILED", "VALID",
                     null, backupPath == null ? null : backupPath.toString(),
                     FailureReason.INSTALLER_EXECUTION_FAILED.name() + ": " + run.getSummary(),
                     initiatedBy, "fromVersion=" + fromVersion,
-                    exitCode, installerType, logFile.toString());
+                    exitCode, installerType, logFile.toString(), recoveryState);
                 if (notificationService != null) {
-                    notificationService.addAlert("ERROR",
-                        "MSI install failed (exit " + run.getExitCode() + ") for "
-                            + manifest.getVersion(),
-                        PACKAGE_ENTITY, failed.getId());
+                    String severity = RECOVERY_NEEDS_MANUAL.equals(recoveryState) ? "ERROR" : "WARN";
+                    String msg = "MSI install failed (exit " + run.getExitCode() + ") for "
+                        + manifest.getVersion()
+                        + " — recoveryState=" + recoveryState;
+                    notificationService.addAlert(severity, msg, PACKAGE_ENTITY, failed.getId());
                 }
                 auditService.record(PACKAGE_ENTITY, failed.getId(), "UPDATE_FAILED", initiatedBy,
                     null, null,
@@ -393,13 +450,13 @@ public class UpdateService {
                         "reason", FailureReason.INSTALLER_EXECUTION_FAILED.name(),
                         "exitCode", run.getExitCode(),
                         "installerMode", installer.mode(),
-                        "logPath", logFile.toString()),
+                        "logPath", logFile.toString(),
+                        "recoveryState", recoveryState),
                     null);
-                // On installer failure we leave the promoted files in place so
-                // the operator has them for incident review, but throw so the
-                // API reports the failure.
                 throw new ValidationException("install",
-                    FailureReason.INSTALLER_EXECUTION_FAILED.name() + ": exit=" + run.getExitCode());
+                    FailureReason.INSTALLER_EXECUTION_FAILED.name()
+                        + ": exit=" + run.getExitCode()
+                        + " recoveryState=" + recoveryState);
             }
         }
 
@@ -691,7 +748,7 @@ public class UpdateService {
                                               Integer exitCode, String installerType) {
         return recordHistory(pkg, sha, action, status, signatureStatus,
             installedPath, backupPath, error, initiatedBy, notes,
-            exitCode, installerType, null);
+            exitCode, installerType, null, null);
     }
 
     private UpdateHistoryEntry recordHistory(UpdatePackage pkg, String sha, String action, String status,
@@ -699,6 +756,17 @@ public class UpdateService {
                                               String installedPath, String backupPath,
                                               String error, Long initiatedBy, String notes,
                                               Integer exitCode, String installerType, String logPath) {
+        return recordHistory(pkg, sha, action, status, signatureStatus,
+            installedPath, backupPath, error, initiatedBy, notes,
+            exitCode, installerType, logPath, null);
+    }
+
+    private UpdateHistoryEntry recordHistory(UpdatePackage pkg, String sha, String action, String status,
+                                              String signatureStatus,
+                                              String installedPath, String backupPath,
+                                              String error, Long initiatedBy, String notes,
+                                              Integer exitCode, String installerType, String logPath,
+                                              String recoveryState) {
         UpdateHistoryEntry e = new UpdateHistoryEntry();
         e.setPackageName(pkg.getPackageName());
         e.setFromVersion(currentVersion());
@@ -715,9 +783,69 @@ public class UpdateService {
         e.setExitCode(exitCode);
         e.setInstallerType(installerType);
         e.setLogPath(logPath);
+        e.setRecoveryState(recoveryState);
         long id = historyRepo.insert(e);
         e.setId(id);
         return e;
+    }
+
+    /**
+     * Best-effort revert after an installer failure.
+     *
+     * <ol>
+     *   <li>Delete the half-promoted {@code installTarget} directory.</li>
+     *   <li>Move the previous {@code backupPath} tree back into
+     *       {@code installed/} under its original package directory name.
+     *       The backup folder name carries a {@code -{epochMillis}} suffix
+     *       that we strip so rollback + {@link #latestInstalled()} can find
+     *       the right payload.</li>
+     * </ol>
+     *
+     * @return {@link #RECOVERY_AUTO_REVERTED} on success or
+     *         {@link #RECOVERY_NEEDS_MANUAL} if any step fails.
+     */
+    private String attemptAutoRevert(Path installTarget, Path backupPath) {
+        try {
+            if (installTarget != null && Files.exists(installTarget)) {
+                deleteTree(installTarget);
+            }
+            if (backupPath != null && Files.exists(backupPath)) {
+                String restoredName = stripTimestampSuffix(backupPath.getFileName().toString());
+                Path restoreTarget = installedDir.resolve(restoredName);
+                if (Files.exists(restoreTarget)) deleteTree(restoreTarget);
+                Files.move(backupPath, restoreTarget, StandardCopyOption.ATOMIC_MOVE);
+            }
+            return RECOVERY_AUTO_REVERTED;
+        } catch (IOException e) {
+            log.error("Auto-revert failed for {}: {}", installTarget, e.getMessage(), e);
+            return RECOVERY_NEEDS_MANUAL;
+        }
+    }
+
+    /**
+     * Backup folders are named {@code {package}-{epochMillis}}; strip the
+     * trailing {@code -\d+} so we can restore to the package's original
+     * {@code installed/} location.  Also tolerates {@code -rollback-\d+}
+     * produced by the rollback path.
+     */
+    private static String stripTimestampSuffix(String backupName) {
+        String n = backupName.replaceFirst("-rollback-\\d+$", "");
+        n = n.replaceFirst("-\\d+$", "");
+        return n;
+    }
+
+    private void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void copyTree(Path src, Path dst) throws IOException {

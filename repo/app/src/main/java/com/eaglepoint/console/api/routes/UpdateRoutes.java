@@ -9,11 +9,24 @@ import io.javalin.Javalin;
 import java.util.Map;
 
 /**
- * Admin-only endpoints exposing the offline updater lifecycle.
+ * Endpoints exposing the offline updater lifecycle.
  *
- * <p>Every route requires {@code SYSTEM_ADMIN}.  The routes return
- * structured JSON — signatures themselves are never echoed in responses
- * (only status + human-readable reason).</p>
+ * <p>Role matrix:
+ * <ul>
+ *   <li><strong>Mutating / discovery</strong> —
+ *       {@code GET /api/updates/packages},
+ *       {@code POST /api/updates/packages/{name}/verify},
+ *       {@code POST /api/updates/packages/{name}/apply},
+ *       {@code POST /api/updates/rollback} — require {@code SYSTEM_ADMIN}.</li>
+ *   <li><strong>Read-only history</strong> —
+ *       {@code GET /api/updates/history},
+ *       {@code GET /api/updates/current} — require
+ *       {@code SYSTEM_ADMIN} <em>or</em> {@code AUDITOR} so compliance
+ *       reviewers can trace updates without being able to apply them.</li>
+ * </ul>
+ *
+ * <p>Responses return structured JSON — signatures themselves are never
+ * echoed in responses (only status + human-readable reason).</p>
  */
 public class UpdateRoutes {
 
@@ -66,8 +79,11 @@ public class UpdateRoutes {
 
         app.get("/api/updates/current", ctx -> {
             AuthMiddleware.requireRoles(ctx, "SYSTEM_ADMIN", "AUDITOR");
-            ctx.json(Map.of("current",
-                updateService.currentInstalled().orElse(null)));
+            // Map.of does not accept null values, so build a HashMap when
+            // there's no installed row on record.
+            java.util.Map<String, Object> body = new java.util.HashMap<>();
+            body.put("current", updateService.currentInstalled().orElse(null));
+            ctx.json(body);
         });
     }
 

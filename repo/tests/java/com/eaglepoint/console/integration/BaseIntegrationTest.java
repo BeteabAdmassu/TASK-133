@@ -190,4 +190,34 @@ public abstract class BaseIntegrationTest {
     protected static String adminToken() {
         return tokenFor("SYSTEM_ADMIN");
     }
+
+    /**
+     * Test-only: wipe {@code update_history} + {@code installed/} +
+     * {@code backups/} so the suite can assert clean-slate updater
+     * behaviour (e.g. "rollback returns 409 when no history exists")
+     * without interference from other classes that previously applied
+     * packages.  Called from {@code @BeforeEach} in the updater test
+     * classes that require a known baseline.
+     */
+    protected static void clearUpdaterFixture() {
+        try (java.sql.Connection c =
+                 com.eaglepoint.console.config.DatabaseConfig.getInstance().getDataSource().getConnection();
+             java.sql.Statement s = c.createStatement()) {
+            s.executeUpdate("DELETE FROM update_history");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to clear update_history: " + e.getMessage(), e);
+        }
+        for (String sub : new String[] { "installed", "backups" }) {
+            Path dir = UPDATER_DIR.resolve(sub);
+            if (!Files.exists(dir)) continue;
+            try (var walk = Files.walk(dir)) {
+                walk.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(p -> {
+                        if (!p.equals(dir)) {
+                            try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+                        }
+                    });
+            } catch (Exception ignored) {}
+        }
+    }
 }

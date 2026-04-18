@@ -1,5 +1,6 @@
 package com.eaglepoint.console.integration;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.Matchers.*;
@@ -7,12 +8,18 @@ import static org.hamcrest.Matchers.*;
 /**
  * Integration coverage for the {@code /api/updates/*} surface.
  *
- * <p>Unit tests in {@code UpdateServiceTest} cover the full apply/rollback
- * crypto pipeline on a temp directory.  These tests focus on the HTTP /
- * auth layer: role enforcement, error shape, and the "no packages yet"
- * happy path that every deployment starts from.</p>
+ * <p>Every test in this class starts from a wiped updater fixture
+ * (update_history DELETEd, installed/ and backups/ emptied) via
+ * {@link #clearBeforeEach()}.  That lets us assert the <em>exact</em>
+ * HTTP outcome — 404, 409, 200 — without any either-or ambiguity with
+ * sibling test classes that drop real packages.</p>
  */
 class UpdateApiTest extends BaseIntegrationTest {
+
+    @BeforeEach
+    void clearBeforeEach() {
+        clearUpdaterFixture();
+    }
 
     @Test
     void listPackagesRequiresSystemAdmin() {
@@ -23,68 +30,66 @@ class UpdateApiTest extends BaseIntegrationTest {
     }
 
     @Test
-    void listPackagesAsAdminReturnsEmptyArrayWhenNoPackagesDropped() {
+    void listPackagesAsAdminReturnsDataFieldAndIsAnArray() {
         withAdmin()
         .when()
             .get("/api/updates/packages")
         .then()
             .statusCode(200)
-            .body("data", notNullValue());
+            .body("data", notNullValue())
+            .body("data", instanceOf(java.util.List.class));
     }
 
     @Test
-    void verifyUnknownPackageReturnsNotFound() {
+    void verifyUnknownPackageReturns404WithStructuredError() {
         withAdmin()
         .when()
             .post("/api/updates/packages/nonexistent-1.0.0/verify")
         .then()
             .statusCode(404)
-            .body("error.code", equalTo("NOT_FOUND"));
+            .body("error.code", equalTo("NOT_FOUND"))
+            .body("error.message", containsString("UpdatePackage"));
     }
 
     @Test
-    void applyUnknownPackageReturnsNotFound() {
+    void applyUnknownPackageReturns404WithStructuredError() {
         withAdmin()
         .when()
             .post("/api/updates/packages/nonexistent-1.0.0/apply")
         .then()
             .statusCode(404)
-            .body("error.code", equalTo("NOT_FOUND"));
+            .body("error.code", equalTo("NOT_FOUND"))
+            .body("error.message", containsString("UpdatePackage"));
     }
 
     @Test
-    void rollbackReturnsEitherSuccessOr409() {
-        // The integration test suite shares a JVM with UpdateInstallerApiTest
-        // which may have applied/rolled-back real packages already.  We only
-        // assert the protocol: either 200 with a ROLLED_BACK row, or 409 if
-        // there's no history to roll back.
-        int code = withAdmin()
+    void rollbackWithoutHistoryReturns409Conflict() {
+        withAdmin()
         .when()
             .post("/api/updates/rollback")
         .then()
-            .extract().statusCode();
-        assertBetween(code, 200, 409);
+            .statusCode(409)
+            .body("error.code", equalTo("CONFLICT"))
+            .body("error.message", containsString("No installed update"));
     }
 
     @Test
     void historyIsReadableByAdminAndAuditor() {
-        withAdmin().when().get("/api/updates/history").then().statusCode(200).body("data", notNullValue());
-        asRole("AUDITOR").when().get("/api/updates/history").then().statusCode(200).body("data", notNullValue());
-        asRole("OPS_MANAGER").when().get("/api/updates/history").then().statusCode(403);
+        withAdmin().when().get("/api/updates/history")
+            .then().statusCode(200).body("data", notNullValue());
+        asRole("AUDITOR").when().get("/api/updates/history")
+            .then().statusCode(200).body("data", notNullValue());
+        asRole("OPS_MANAGER").when().get("/api/updates/history")
+            .then().statusCode(403);
     }
 
     @Test
-    void currentInstalledEndpointReachable() {
+    void currentInstalledReturnsNullWithoutHistory() {
         withAdmin()
         .when()
             .get("/api/updates/current")
         .then()
-            .statusCode(200); // `current` may be null OR a row, depending on run order
-    }
-
-    private static void assertBetween(int actual, int... allowed) {
-        for (int a : allowed) if (actual == a) return;
-        throw new AssertionError("Expected status in " + java.util.Arrays.toString(allowed)
-            + " but got " + actual);
+            .statusCode(200)
+            .body("current", nullValue());
     }
 }

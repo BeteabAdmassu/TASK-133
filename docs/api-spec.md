@@ -217,7 +217,13 @@ crash-safe resume.
 Server-side validation:
 
 - `version`, `installerFile` (when `installerType=MSI`), `payloadSha256` are required.
-- `installerType` must be `MSI` or `NONE`.
+- `installerType` — **production strict-MSI** (default): must be `MSI`.
+  The parser also recognises `NONE` (legacy payload-only packages), but
+  `apply` will reject `NONE` with `MANIFEST_INVALID` unless the
+  operator has explicitly opted in by setting
+  `-Dupdater.allow.non.msi=true` or `UPDATER_ALLOW_NON_MSI=true` (dev/CI
+  only — never set in the production container). Any other value
+  (e.g. `EXE`) is rejected outright.
 - `productCode` must be a Windows Installer GUID (braced or unbraced).
 - `installArgs` entries must match `KEY=VALUE`, keys upper-snake-case, values must not contain
   `& | ; < > $` backtick CR LF; each entry capped at 256 chars.
@@ -243,15 +249,50 @@ Server-side validation:
 }
 ```
 
+#### Strict-MSI enforcement
+
+Production apply is **strict-MSI**: a manifest whose `installerType` is
+anything other than `MSI` (including missing / legacy payload-only
+packages) is rejected with `VALIDATION_ERROR` / `MANIFEST_INVALID`
+**before any installer command runs**.  The legacy payload-only path is
+only reachable with an explicit operator override:
+
+```
+-Dupdater.allow.non.msi=true
+UPDATER_ALLOW_NON_MSI=true
+```
+
+The override is intended for CI / dev only.  Production `docker-compose.yml`
+does not set it, so every live container starts strict.
+
 #### Failure reason categories (returned as `VALIDATION_ERROR` / `CONFLICT`)
 
 | Reason | When |
 |---|---|
 | `SIGNATURE_INVALID` | Ed25519 signature or binary SHA-256 does not match |
 | `SIGNATURE_UNTRUSTED` | No trust key is loaded |
-| `MANIFEST_INVALID` | Required installer field missing, bad GUID, unsafe installArg |
-| `INSTALLER_EXECUTION_FAILED` | `msiexec` returned non-zero; log path recorded on the history row |
+| `MANIFEST_INVALID` | Required installer field missing, bad GUID, unsafe installArg, non-MSI installerType under strict mode |
+| `INSTALLER_EXECUTION_FAILED` | `msiexec` returned non-zero; log path and recoveryState recorded on the history row |
 | `ROLLBACK_TARGET_MISSING` | No prior INSTALLED row, or prior backup is gone from disk |
+
+#### Post-failure recovery state
+
+When filesystem promotion succeeds but the installer itself fails, the
+updater **auto-reverts** the filesystem: it deletes the half-installed
+tree and moves the previous `installed/` directory back from
+`backups/`.  The `recoveryState` column on the failed `update_history`
+row (migration `V5__update_history_recovery_state.sql`) reflects the
+outcome:
+
+| Value | Meaning | Notification severity |
+|---|---|---|
+| `AUTO_REVERTED` | Previous payload restored — no operator action required. | `WARN` |
+| `NEEDS_MANUAL_RECOVERY` | Auto-revert itself failed — operator must reconcile `installed_path` and `backup_path` manually. | `ERROR` |
+| `null` | No revert attempted (success, early rejection, or rollback row). | n/a |
+
+The `ValidationException.message` / `error.message` on the API response
+surfaces the recovery state so callers can decide whether to retry:
+e.g. `"INSTALLER_EXECUTION_FAILED: exit=1603 recoveryState=AUTO_REVERTED"`.
 
 #### Trust material
 

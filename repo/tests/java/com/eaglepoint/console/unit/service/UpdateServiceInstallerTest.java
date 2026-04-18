@@ -115,22 +115,94 @@ class UpdateServiceInstallerTest {
     }
 
     @Test
-    void applyWithInstallerNonZeroExitRecordsFailure() throws Exception {
-        createSignedMsiPackage("eaglepoint-1.4.0", "1.4.0", PRODUCT_GUID_A, List.of());
+    void applyWithInstallerNonZeroExitRecordsFailureAndAutoReverts() throws Exception {
+        // Seed a prior installed version so auto-revert has something to
+        // move back into installed/.
+        createSignedMsiPackage("eaglepoint-1.0.0", "1.0.0", PRODUCT_GUID_A, List.of());
+        service.applyPackage("eaglepoint-1.0.0", 7L);
+        assertTrue(Files.exists(tempDir.resolve("installed/eaglepoint-1.0.0")));
+
+        createSignedMsiPackage("eaglepoint-1.4.0", "1.4.0", PRODUCT_GUID_B, List.of());
+        installer.clear();
         installer.setNextExitCode(1603); // classic MSI "fatal error during installation"
 
         ValidationException ve = assertThrows(ValidationException.class,
             () -> service.applyPackage("eaglepoint-1.4.0", 8L));
         assertTrue(ve.getMessage().contains("INSTALLER_EXECUTION_FAILED"));
         assertTrue(ve.getMessage().contains("1603"));
+        assertTrue(ve.getMessage().contains("AUTO_REVERTED"),
+            "Failure message must surface recoveryState so operator knows state was restored");
 
-        // A FAILED row should be present with the installer exit code captured.
         UpdateHistoryEntry failed = history.findAll(10).stream()
             .filter(e -> "FAILED".equals(e.getAction()) && "FAILED".equals(e.getStatus()))
             .findFirst().orElseThrow();
         assertEquals(Integer.valueOf(1603), failed.getExitCode());
         assertEquals("MSI", failed.getInstallerType());
-        verify(notifications).addAlert(eq("ERROR"), anyString(), eq("UpdatePackage"), any());
+        assertEquals("AUTO_REVERTED", failed.getRecoveryState());
+
+        // Half-installed 1.4.0 tree removed; 1.0.0 tree restored.
+        assertFalse(Files.exists(tempDir.resolve("installed/eaglepoint-1.4.0")),
+            "Half-installed tree must be deleted by auto-revert");
+        assertTrue(Files.exists(tempDir.resolve("installed/eaglepoint-1.0.0")),
+            "Previous installed tree must be restored by auto-revert");
+
+        // AUTO_REVERTED is a WARN — the system is consistent, just not upgraded.
+        verify(notifications).addAlert(eq("WARN"), contains("AUTO_REVERTED"),
+            eq("UpdatePackage"), any());
+    }
+
+    @Test
+    void applyRejectsUnsupportedInstallerType() throws Exception {
+        createSignedMsiPackage("eaglepoint-exe-1.0.0", "1.0.0", PRODUCT_GUID_A, List.of());
+        // Rewrite manifest with an unsupported installerType and re-sign.
+        Path mf = tempDir.resolve("incoming/eaglepoint-exe-1.0.0/manifest.json");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> m = new ObjectMapper().readValue(Files.readAllBytes(mf), Map.class);
+        m.put("installerType", "EXE");
+        byte[] newBody = new ObjectMapper().writeValueAsBytes(m);
+        Files.write(mf, newBody);
+        Signature signer = Signature.getInstance("Ed25519");
+        signer.initSign(signingKeys.getPrivate());
+        signer.update(newBody);
+        Files.write(tempDir.resolve("incoming/eaglepoint-exe-1.0.0/manifest.sig"), signer.sign());
+
+        ValidationException ve = assertThrows(ValidationException.class,
+            () -> service.applyPackage("eaglepoint-exe-1.0.0", 1L));
+        assertTrue(ve.getMessage().contains("Unsupported installerType"));
+        assertTrue(ve.getMessage().contains("EXE"));
+        assertEquals(0, installer.getInvocations().size(),
+            "Unsupported installerType must short-circuit before any installer runs");
+    }
+
+    @Test
+    void applyRejectsLegacyNonMsiPackageByDefault() throws Exception {
+        // Build a strict-MSI UpdateService (allowNonMsi=false — production default).
+        UpdateService strict = new UpdateService(tempDir, verifier, history,
+            audit, notifications, installer, java.time.Duration.ofMinutes(15),
+            /* allowNonMsi = */ false);
+
+        Path pkg = tempDir.resolve("incoming/legacy-1.0.0");
+        Files.createDirectories(pkg);
+        Path payload = pkg.resolve("payload.zip");
+        Files.writeString(payload, "legacy");
+        String sha = DigestUtils.sha256Hex(Files.readAllBytes(payload));
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("version", "1.0.0");
+        manifest.put("payloadFilename", "payload.zip");
+        manifest.put("payloadSha256", sha);
+        manifest.put("payloadSize", Files.size(payload));
+        byte[] body = new ObjectMapper().writeValueAsBytes(manifest);
+        Files.write(pkg.resolve("manifest.json"), body);
+        Signature signer = Signature.getInstance("Ed25519");
+        signer.initSign(signingKeys.getPrivate());
+        signer.update(body);
+        Files.write(pkg.resolve("manifest.sig"), signer.sign());
+
+        ValidationException ve = assertThrows(ValidationException.class,
+            () -> strict.applyPackage("legacy-1.0.0", 1L));
+        assertTrue(ve.getMessage().contains("installerType=MSI"),
+            "Default strict-MSI must reject legacy NONE packages");
+        assertEquals(0, installer.getInvocations().size());
     }
 
     @Test
@@ -258,6 +330,7 @@ class UpdateServiceInstallerTest {
             c.setExitCode(e.getExitCode());
             c.setLogPath(e.getLogPath());
             c.setInstallerType(e.getInstallerType());
+            c.setRecoveryState(e.getRecoveryState());
             rows.add(c);
             return id;
         }

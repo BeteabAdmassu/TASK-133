@@ -33,6 +33,7 @@ public class UpdateHistoryRepository extends BaseRepository {
         e.setExitCode(getNullableInt(rs, "exit_code"));
         e.setLogPath(rs.getString("log_path"));
         e.setInstallerType(rs.getString("installer_type"));
+        e.setRecoveryState(rs.getString("recovery_state"));
         return e;
     }
 
@@ -40,15 +41,21 @@ public class UpdateHistoryRepository extends BaseRepository {
         return insertAndGetId(
             "INSERT INTO update_history (package_name, from_version, to_version, action, status, " +
             "sha256_hash, signature_status, installed_path, backup_path, error_message, initiated_by, notes, " +
-            "exit_code, log_path, installer_type) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "exit_code, log_path, installer_type, recovery_state) " +
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             e.getPackageName(), e.getFromVersion(), e.getToVersion(),
             e.getAction(), e.getStatus(),
             e.getSha256Hash(), e.getSignatureStatus(),
             e.getInstalledPath(), e.getBackupPath(), e.getErrorMessage(),
             e.getInitiatedBy(), e.getNotes(),
-            e.getExitCode(), e.getLogPath(), e.getInstallerType()
+            e.getExitCode(), e.getLogPath(), e.getInstallerType(),
+            e.getRecoveryState()
         );
+    }
+
+    /** Test/maintenance helper: wipe history so a suite can assert clean-slate behavior. */
+    public void deleteAll() {
+        execute("DELETE FROM update_history");
     }
 
     public List<UpdateHistoryEntry> findAll(int limit) {

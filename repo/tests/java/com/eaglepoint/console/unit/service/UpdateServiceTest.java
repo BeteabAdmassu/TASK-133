@@ -55,7 +55,13 @@ class UpdateServiceTest {
         audit = mock(AuditService.class);
         notifications = mock(NotificationService.class);
         historyRepo = new StubHistoryRepo();
-        service = new UpdateService(tempDir, verifier, historyRepo, audit, notifications);
+        // These legacy tests cover the pre-installer payload-only packages;
+        // opt into the dev-only allowNonMsi path so the strict-MSI production
+        // default does not reject them.
+        service = new UpdateService(tempDir, verifier, historyRepo, audit, notifications,
+            com.eaglepoint.console.service.updater.InstallerExecutorFactory.resolve(),
+            java.time.Duration.ofMinutes(15),
+            /* allowNonMsi = */ true);
     }
 
     @Test
@@ -237,6 +243,7 @@ class UpdateServiceTest {
             copy.setExitCode(e.getExitCode());
             copy.setLogPath(e.getLogPath());
             copy.setInstallerType(e.getInstallerType());
+            copy.setRecoveryState(e.getRecoveryState());
             rows.add(copy);
             return id;
         }

@@ -18,6 +18,8 @@ public class UpdateHistoryEntry {
     private Integer exitCode;
     private String logPath;
     private String installerType;
+    /** AUTO_REVERTED | NEEDS_MANUAL_RECOVERY | null. See V5 migration. */
+    private String recoveryState;
 
     public long getId() { return id; }
     public void setId(long id) { this.id = id; }
@@ -53,4 +55,6 @@ public class UpdateHistoryEntry {
     public void setLogPath(String logPath) { this.logPath = logPath; }
     public String getInstallerType() { return installerType; }
     public void setInstallerType(String installerType) { this.installerType = installerType; }
+    public String getRecoveryState() { return recoveryState; }
+    public void setRecoveryState(String recoveryState) { this.recoveryState = recoveryState; }
 }

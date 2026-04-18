@@ -1,0 +1,14 @@
+-- Explicit recovery-state marker for rows that failed after the
+-- filesystem promotion succeeded (i.e. installer crash, OS error).
+--
+-- Values:
+--   AUTO_REVERTED           — the updater rolled the filesystem back to
+--                             the previous installed payload before the
+--                             operator saw the failure.  No action needed.
+--   NEEDS_MANUAL_RECOVERY   — the automatic revert itself failed; the
+--                             operator must intervene using the paths
+--                             stored in installed_path / backup_path.
+--   NULL                    — no recovery performed (normal success path,
+--                             signature-reject path, or early validation
+--                             failure before any files were promoted).
+ALTER TABLE update_history ADD COLUMN recovery_state TEXT;

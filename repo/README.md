@@ -513,18 +513,50 @@ to `update_history` (migrations `V3__update_history.sql` +
 5. Write a `ROLLED_BACK/SUCCESS` history row with the uninstall /
    reinstall exit codes and log paths.
 
+### Strict-MSI enforcement
+
+Production apply is **strict-MSI**: a package whose `installerType` is
+not `MSI` is rejected with `VALIDATION_ERROR` / `MANIFEST_INVALID`
+**before any installer command runs**.  The legacy payload-only path
+exists only for CI / dev and is gated behind an explicit override:
+
+| Property / env | Default | Effect |
+|---|---|---|
+| `-Dupdater.allow.non.msi=true` | unset | Accept packages with `installerType=NONE` (dev only) |
+| `UPDATER_ALLOW_NON_MSI=true` | unset | Same, as env var |
+
+Neither is set in `docker-compose.yml`, so the live container is
+strict-MSI out of the box.
+
 ### Failure reason categories
 
 `apply` and `rollback` map every terminal failure to one of:
 
 - `SIGNATURE_INVALID` / `SIGNATURE_UNTRUSTED`
-- `MANIFEST_INVALID` (bad installer field, bad productCode, unsafe installArg)
-- `INSTALLER_EXECUTION_FAILED` (`exit != 0`)
+- `MANIFEST_INVALID` (bad installer field, bad productCode, unsafe installArg, non-MSI installerType)
+- `INSTALLER_EXECUTION_FAILED` (`exit != 0`) — includes `recoveryState`
 - `ROLLBACK_TARGET_MISSING` (no prior install or backup gone)
 - `UNEXPECTED` (filesystem IO error during promote/restore)
 
 The reason is prefixed on `error.message` so clients can classify
 failures without parsing prose.
+
+### Post-failure recovery (`recoveryState`)
+
+When filesystem promotion succeeded but `msiexec /i` returned non-zero,
+the updater automatically reverts the filesystem to the previous
+installed payload and persists the outcome on the failed
+`update_history` row (column added by
+`V5__update_history_recovery_state.sql`):
+
+| `recoveryState` | Meaning | Notification |
+|---|---|---|
+| `AUTO_REVERTED` | Previous version restored; machine is in a consistent state. No operator action required. | `WARN` |
+| `NEEDS_MANUAL_RECOVERY` | Auto-revert itself failed. Operator must reconcile using `installed_path` and `backup_path` from the row. | `ERROR` |
+| `null` | Not applicable (success path, early rejection, or rollback row). | — |
+
+The API response / exception message includes the state explicitly,
+e.g. `INSTALLER_EXECUTION_FAILED: exit=1603 recoveryState=AUTO_REVERTED`.
 
 ---
 
