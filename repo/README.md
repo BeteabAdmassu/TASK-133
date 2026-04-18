@@ -349,12 +349,10 @@ and emits a SHA-256 sidecar next to the output file.  Supported entity types:
 Tests execute entirely inside Docker — no host Java install needed. The
 `run_tests.sh` orchestrator:
 
-1. Waits for `/api/health` to return `status=UP` (timeout 120 s).
-2. Builds the `tests` stage of `app/Dockerfile` which compiles and runs
-   `mvn test` (unit + REST-Assured integration).
-3. Runs a jq-validated set of HTTP smoke tests against the running container
-   (login + wrong-password + `/me` + communities CRUD + role-access 403 +
-   audit-trail + 401 + logout).
+1. Starts the app via `docker compose up -d` if it is not already running.
+2. Waits for `/api/health` to return `status=UP` (timeout 120 s).
+3. Builds the `tests` stage of `app/Dockerfile` which compiles and runs
+   `mvn test` (unit + REST-Assured integration tests).
 
 ```bash
 ./run_tests.sh       # exits 0 only when every check passes
